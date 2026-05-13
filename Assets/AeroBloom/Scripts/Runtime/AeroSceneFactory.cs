@@ -44,9 +44,9 @@ namespace AeroBloom
             CreateGroundPlane(envRoot, p, pack);
             CreateAmbientParticles(vfxRoot);
             CreateSoapBubbles(vfxRoot, p);
-            CreateCity(cityRoot, p, pack);
+            CreateCity(cityRoot, p);
 
-            Vector3 startPos = new Vector3(0f, 1f, -5f);
+            Vector3 startPos = new Vector3(0f, 0.6f, -5f);
             AeroPlayerController player = CreatePlayer(root, startPos, Quaternion.identity, pack);
 
             AeroLevelDirector director = rootGO.AddComponent<AeroLevelDirector>();
@@ -81,7 +81,7 @@ namespace AeroBloom
             {
                 Material sky = new Material(skyShader);
                 sky.SetColor("_SkyTint",     new Color(0.18f, 0.60f, 1f));   // vibrant Frutiger blue
-                sky.SetColor("_GroundColor", new Color(0.52f, 0.84f, 0.56f)); // soft green horizon
+                sky.SetColor("_GroundColor", new Color(0.22f, 0.55f, 0.78f)); // blue-teal horizon
                 sky.SetFloat("_AtmosphereThickness", 1.1f);  // thin — no orange tint
                 sky.SetFloat("_Exposure",  1.05f);
                 sky.SetFloat("_SunDisk",   2f);
@@ -135,7 +135,7 @@ namespace AeroBloom
             grass.name = "GrassPlane";
             grass.transform.SetParent(root, false);
             grass.transform.position   = new Vector3(0f, -3.5f, 380f);
-            grass.transform.localScale = new Vector3(120f, 1f, 120f);
+            grass.transform.localScale = new Vector3(50f, 1f, 100f);
             AssignMat(grass, grassMat);
             DestroyCollider(grass);
 
@@ -145,7 +145,7 @@ namespace AeroBloom
             water.name = "WaterPlane";
             water.transform.SetParent(root, false);
             water.transform.position   = new Vector3(0f, -4f, 380f);
-            water.transform.localScale = new Vector3(130f, 1f, 130f);
+            water.transform.localScale = new Vector3(55f, 1f, 105f);
             AssignMat(water, waterMat);
             DestroyCollider(water);
         }
@@ -160,14 +160,14 @@ namespace AeroBloom
             ParticleSystem ps = psGO.AddComponent<ParticleSystem>();
 
             var main = ps.main;
-            main.startLifetime   = new ParticleSystem.MinMaxCurve(12f, 18f);
-            main.startSpeed      = 0.3f;
-            main.startSize       = new ParticleSystem.MinMaxCurve(0.06f, 0.14f);
-            main.startColor      = new ParticleSystem.MinMaxGradient(Color.white, new Color(0.6f, 1f, 0.7f));
-            main.maxParticles    = 2500;
+            main.startLifetime   = new ParticleSystem.MinMaxCurve(10f, 16f);
+            main.startSpeed      = 0.2f;
+            main.startSize       = new ParticleSystem.MinMaxCurve(0.02f, 0.05f);
+            main.startColor      = new ParticleSystem.MinMaxGradient(new Color(1f, 1f, 1f, 0.4f), new Color(0.7f, 1f, 0.8f, 0.3f));
+            main.maxParticles    = 600;
             main.simulationSpace = ParticleSystemSimulationSpace.World;
 
-            var emit = ps.emission; emit.rateOverTime = 100f;
+            var emit = ps.emission; emit.rateOverTime = 25f;
             var shape = ps.shape; shape.shapeType = ParticleSystemShapeType.Box; shape.scale = new Vector3(700f, 220f, 800f);
 
             var vel = ps.velocityOverLifetime;
@@ -209,48 +209,36 @@ namespace AeroBloom
         // ─────────────────────────────────────────────
         // CITY BACKGROUND — white organic towers on the sides
         // ─────────────────────────────────────────────
-        private static void CreateCity(Transform root, Palette p, AeroPackConfig pack)
+        private static void CreateCity(Transform root, Palette p)
         {
             System.Random r = new System.Random(42);
             Material wallMat  = LoadFA("FA_BuildingWall");  if (wallMat  == null) wallMat  = p.AeroBuilding;
             Material glassMat = LoadFA("FA_BuildingGlass"); if (glassMat == null) glassMat = p.AeroBuildingWindow;
 
-            // Left tower cluster x=-180 to -70
+            // Left tower cluster x=-180 to -70  (always procedural — pack prefabs can have URP shader issues)
             for (int i = 0; i < 14; i++)
             {
-                float bx   = -180f + (float)r.NextDouble() * 110f;
-                float bz   = (float)r.NextDouble() * 750f;
-                float h    = 50f + RF(r, 80f);
-                float w    = 9f  + RF(r, 14f);
+                float bx  = -180f + (float)r.NextDouble() * 110f;
+                float bz  = (float)r.NextDouble() * 750f;
+                float h   = 50f + RF(r, 80f);
+                float w   = 9f  + RF(r, 14f);
                 int   type = (int)(r.NextDouble() * 3);
-                float yaw  = (float)r.NextDouble() * 360f;
-
-                if (pack != null && pack.towerBuildingPrefab != null && type == 0)
-                    SpawnPackBuilding(root, pack.towerBuildingPrefab, "TowerL" + i, bx, h, bz, yaw, p);
-                else if (pack != null && pack.basicBuildingPrefab != null && type == 1)
-                    SpawnPackBuilding(root, pack.basicBuildingPrefab, "BldgL" + i, bx, h, bz, yaw, p);
-                else
-                    ProceduralBuilding(root, "PL" + i, new Vector3(bx, h * 0.5f - 5f, bz),
-                        new Vector3(w, h, w), Quaternion.Euler(0, yaw, 0), type, wallMat, glassMat, p);
+                float yaw = (float)r.NextDouble() * 360f;
+                ProceduralBuilding(root, "PL" + i, new Vector3(bx, h * 0.5f - 5f, bz),
+                    new Vector3(w, h, w), Quaternion.Euler(0, yaw, 0), type, wallMat, glassMat, p);
             }
 
             // Right tower cluster x=70 to 180
             for (int i = 0; i < 14; i++)
             {
-                float bx   = 70f + (float)r.NextDouble() * 110f;
-                float bz   = (float)r.NextDouble() * 750f;
-                float h    = 50f + RF(r, 80f);
-                float w    = 9f  + RF(r, 14f);
+                float bx  = 70f + (float)r.NextDouble() * 110f;
+                float bz  = (float)r.NextDouble() * 750f;
+                float h   = 50f + RF(r, 80f);
+                float w   = 9f  + RF(r, 14f);
                 int   type = (int)(r.NextDouble() * 3);
-                float yaw  = (float)r.NextDouble() * 360f;
-
-                if (pack != null && pack.towerBuildingPrefab != null && type == 0)
-                    SpawnPackBuilding(root, pack.towerBuildingPrefab, "TowerR" + i, bx, h, bz, yaw, p);
-                else if (pack != null && pack.basicBuildingPrefab != null && type == 1)
-                    SpawnPackBuilding(root, pack.basicBuildingPrefab, "BldgR" + i, bx, h, bz, yaw, p);
-                else
-                    ProceduralBuilding(root, "PR" + i, new Vector3(bx, h * 0.5f - 5f, bz),
-                        new Vector3(w, h, w), Quaternion.Euler(0, yaw, 0), type, wallMat, glassMat, p);
+                float yaw = (float)r.NextDouble() * 360f;
+                ProceduralBuilding(root, "PR" + i, new Vector3(bx, h * 0.5f - 5f, bz),
+                    new Vector3(w, h, w), Quaternion.Euler(0, yaw, 0), type, wallMat, glassMat, p);
             }
 
             // Floating chrome deco spheres (fewer, only near level)
@@ -263,18 +251,6 @@ namespace AeroBloom
                 float sc = 2f  + RF(r, 4f);
                 MakeSphere(root, "DecoSphere" + i, new Vector3(sx, sy, sz), sc, chromeMat, false);
             }
-        }
-
-        private static void SpawnPackBuilding(Transform root, GameObject prefab, string name,
-            float bx, float h, float bz, float yaw, Palette p)
-        {
-            GameObject bld = Object.Instantiate(prefab);
-            bld.name = name;
-            bld.transform.SetParent(root, false);
-            bld.transform.position = new Vector3(bx, h * 0.5f - 5f, bz);
-            bld.transform.rotation = Quaternion.Euler(0, yaw, 0);
-            DestroyCollidersRecursive(bld);
-            ApplyBuildingMaterials(bld, p);
         }
 
         private static void ProceduralBuilding(Transform parent, string name,
@@ -378,17 +354,18 @@ namespace AeroBloom
             Material shaftMat = LoadFA("FA_Chrome");       if (shaftMat == null) shaftMat = p.Chrome;
             Material eMat     = LoadFA("FA_EmissiveCyan"); if (eMat     == null) eMat     = p.EmissiveCyan;
 
-            // shaftH = height of shaft from ground; player needs to reach disc top
+            // 1.5 m gain per step → comfortable single jump (max theoretical = 2.0 m).
+            // Approach top ≈2.75  T1 top=4.5  …  T8 top=15.5
             (Vector3 pos, float shaftH, float discR, bool moves, Vector3 mAxis, float mAmp, float mSpd)[] towers =
             {
-                (new Vector3( 0f, 0f,  93f),  10f, 5.0f, false, Vector3.zero,    0f,  0f),
-                (new Vector3( 6f, 0f, 109f),  14f, 4.5f, false, Vector3.zero,    0f,  0f),
-                (new Vector3(-5f, 0f, 125f),  17f, 4.5f, true,  Vector3.right,   3.5f, 0.85f),
-                (new Vector3( 5f, 0f, 141f),  19f, 5.0f, false, Vector3.zero,    0f,  0f),
-                (new Vector3(-4f, 0f, 157f),  21f, 4.0f, true,  Vector3.forward, 3.0f, 0.95f),
-                (new Vector3( 4f, 0f, 173f),  23f, 4.5f, false, Vector3.zero,    0f,  0f),
-                (new Vector3(-3f, 0f, 189f),  25f, 4.0f, true,  Vector3.right,   2.5f, 1.0f),
-                (new Vector3( 0f, 0f, 206f),  28f, 6.0f, false, Vector3.zero,    0f,  0f),
+                (new Vector3( 0f, 0f,  93f),  4.15f, 5.0f, false, Vector3.zero,    0f,  0f),   // top=4.5  +1.75
+                (new Vector3( 6f, 0f, 109f),  5.65f, 4.5f, false, Vector3.zero,    0f,  0f),   // top=6.0  +1.5
+                (new Vector3(-5f, 0f, 125f),  7.15f, 4.5f, true,  Vector3.right,   3.5f, 0.85f),// top=7.5  +1.5
+                (new Vector3( 5f, 0f, 141f),  8.65f, 5.0f, false, Vector3.zero,    0f,  0f),   // top=9.0  +1.5
+                (new Vector3(-4f, 0f, 157f), 10.15f, 4.0f, true,  Vector3.forward, 3.0f, 0.95f),// top=10.5 +1.5
+                (new Vector3( 4f, 0f, 173f), 11.65f, 4.5f, false, Vector3.zero,    0f,  0f),   // top=12.0 +1.5
+                (new Vector3(-3f, 0f, 189f), 13.15f, 4.0f, true,  Vector3.right,   2.5f, 1.0f), // top=13.5 +1.5
+                (new Vector3( 0f, 0f, 206f), 15.15f, 6.0f, false, Vector3.zero,    0f,  0f),   // top=15.5 +2.0 double jump
             };
 
             for (int i = 0; i < towers.Length; i++)
@@ -419,8 +396,8 @@ namespace AeroBloom
                 if (i % 2 == 0) AddSeed(s, t.pos + new Vector3(0f, t.shaftH + 2.5f, 0f), dir, p, ref seeds);
             }
 
-            AddSeed(s, new Vector3(0f, 31f, 206f), dir, p, ref seeds);
-            Checkpoint(s, "Relay 02 Disc Hops", new Vector3(0f, 29f, 210f), Quaternion.identity, p, ref cps);
+            AddSeed(s, new Vector3(0f, 21.5f, 206f), dir, p, ref seeds);
+            Checkpoint(s, "Relay 02 Disc Hops", new Vector3(0f, 19.5f, 210f), Quaternion.identity, p, ref cps);
         }
 
         // ─────────────────────────────────────────────
@@ -439,16 +416,16 @@ namespace AeroBloom
             for (int row = 0; row < 9; row++)
             {
                 float wallZ = 222f + row * 16f;
-                float wallH = 32f + row * 4f;
-                BoxNoColl(s, "WallL" + row, new Vector3(-15f, 28f + wallH * 0.5f, wallZ), new Vector3(10f, wallH, 13f), canyonWall);
-                BoxNoColl(s, "WallR" + row, new Vector3( 15f, 28f + wallH * 0.5f, wallZ), new Vector3(10f, wallH, 13f), canyonWall);
-                BoxNoColl(s, "TrimL" + row, new Vector3(-15f, 28f + wallH,         wallZ), new Vector3(10.2f, 0.4f, 13.2f), eMat);
-                BoxNoColl(s, "TrimR" + row, new Vector3( 15f, 28f + wallH,         wallZ), new Vector3(10.2f, 0.4f, 13.2f), eMat);
+                float wallH = 25f + row * 4f;
+                BoxNoColl(s, "WallL" + row, new Vector3(-15f, 19f + wallH * 0.5f, wallZ), new Vector3(10f, wallH, 13f), canyonWall);
+                BoxNoColl(s, "WallR" + row, new Vector3( 15f, 19f + wallH * 0.5f, wallZ), new Vector3(10f, wallH, 13f), canyonWall);
+                BoxNoColl(s, "TrimL" + row, new Vector3(-15f, 19f + wallH,         wallZ), new Vector3(10.2f, 0.4f, 13.2f), eMat);
+                BoxNoColl(s, "TrimR" + row, new Vector3( 15f, 19f + wallH,         wallZ), new Vector3(10.2f, 0.4f, 13.2f), eMat);
             }
 
-            // 10 jumping platforms through the canyon
+            // 10 jumping platforms — start at y≈19 (S2 end), ~2m gain each
             float[] cpz = { 222f, 232f, 243f, 254f, 265f, 278f, 291f, 308f, 326f, 345f };
-            float[] cpy = {  25f,  28f,  31f,  29f,  35f,  39f,  34f,  43f,  49f,  54f };
+            float[] cpy = {  19f,  22f,  25f,  23f,  29f,  33f,  28f,  37f,  43f,  48f };
             float[] cpx = {   0f,   4f,  -4f,   5f,  -5f,   3f,  -3f,   4f,  -2f,   0f };
             float[] cpw = {   9f,   7f,   7f,   6f,   7f,   6f,   7f,   6f,   7f,  11f };
 
@@ -472,11 +449,11 @@ namespace AeroBloom
             wzs.fluctuate     = true;
 
             // End landing platform
-            Plat(s, "CanyonEnd", new Vector3(0f, 54f, 355f), new Vector3(12f, 0.7f, 9f), p.BlueSolid);
-            BoxNoColl(s, "CanyonEndGlow", new Vector3(0f, 54.4f, 355f), new Vector3(12.5f, 0.15f, 9.5f), limeMat);
+            Plat(s, "CanyonEnd", new Vector3(0f, 48f, 355f), new Vector3(12f, 0.7f, 9f), p.BlueSolid);
+            BoxNoColl(s, "CanyonEndGlow", new Vector3(0f, 48.4f, 355f), new Vector3(12.5f, 0.15f, 9.5f), limeMat);
 
-            Checkpoint(s, "Relay 03 Canyon", new Vector3(0f, 54.8f, 358f), Quaternion.identity, p, ref cps);
-            AddSeed(s, new Vector3(0f, 57f, 356f), dir, p, ref seeds);
+            Checkpoint(s, "Relay 03 Canyon", new Vector3(0f, 48.8f, 358f), Quaternion.identity, p, ref cps);
+            AddSeed(s, new Vector3(0f, 51f, 356f), dir, p, ref seeds);
         }
 
         // ─────────────────────────────────────────────
@@ -488,23 +465,23 @@ namespace AeroBloom
             Transform s = Child(root, "Section4_MistCrossing");
             Material eMat = LoadFA("FA_EmissiveLime"); if (eMat == null) eMat = p.EmissiveLime;
 
-            Sign(s, "MistHint", "Careful...\nThe mist hides the path.", new Vector3(0f, 57f, 362f), Quaternion.identity, p);
+            Sign(s, "MistHint", "Careful...\nThe mist hides the path.", new Vector3(0f, 51f, 362f), Quaternion.identity, p);
 
-            // 12 narrow platforms — mix of static and moving
+            // 12 narrow platforms — start at y≈48 (S3 end), ~1.5m gain each
             (Vector3 pos, Vector3 size, bool moves, Vector3 axis, float amp, float spd)[] plats =
             {
-                (new Vector3( 0f, 55f, 366f), new Vector3(5f, 0.5f, 5f),  false, Vector3.zero,    0f, 0f),
-                (new Vector3( 4f, 57f, 376f), new Vector3(3f, 0.5f, 5f),  true,  Vector3.right,   3.5f, 0.9f),
-                (new Vector3(-3f, 58f, 386f), new Vector3(4f, 0.5f, 4f),  false, Vector3.zero,    0f, 0f),
-                (new Vector3( 5f, 60f, 395f), new Vector3(3f, 0.5f, 5f),  true,  Vector3.right,   3.0f, 1.0f),
-                (new Vector3(-2f, 61f, 404f), new Vector3(5f, 0.5f, 4f),  false, Vector3.zero,    0f, 0f),
-                (new Vector3( 3f, 62f, 413f), new Vector3(3f, 0.5f, 4f),  true,  Vector3.forward, 2.5f, 0.8f),
-                (new Vector3(-4f, 63f, 422f), new Vector3(4f, 0.5f, 5f),  false, Vector3.zero,    0f, 0f),
-                (new Vector3( 2f, 65f, 431f), new Vector3(3f, 0.5f, 4f),  true,  Vector3.right,   3.0f, 0.95f),
-                (new Vector3(-2f, 66f, 440f), new Vector3(4f, 0.5f, 4f),  false, Vector3.zero,    0f, 0f),
-                (new Vector3( 1f, 67f, 449f), new Vector3(3f, 0.5f, 5f),  true,  Vector3.right,   2.5f, 1.1f),
-                (new Vector3( 0f, 69f, 457f), new Vector3(5f, 0.5f, 4f),  false, Vector3.zero,    0f, 0f),
-                (new Vector3( 0f, 71f, 464f), new Vector3(11f, 0.5f, 9f), false, Vector3.zero,    0f, 0f),
+                (new Vector3( 0f, 49f, 366f), new Vector3(5f, 0.5f, 5f),  false, Vector3.zero,    0f, 0f),
+                (new Vector3( 4f, 50f, 376f), new Vector3(3f, 0.5f, 5f),  true,  Vector3.right,   3.5f, 0.9f),
+                (new Vector3(-3f, 51f, 386f), new Vector3(4f, 0.5f, 4f),  false, Vector3.zero,    0f, 0f),
+                (new Vector3( 5f, 53f, 395f), new Vector3(3f, 0.5f, 5f),  true,  Vector3.right,   3.0f, 1.0f),
+                (new Vector3(-2f, 54f, 404f), new Vector3(5f, 0.5f, 4f),  false, Vector3.zero,    0f, 0f),
+                (new Vector3( 3f, 55f, 413f), new Vector3(3f, 0.5f, 4f),  true,  Vector3.forward, 2.5f, 0.8f),
+                (new Vector3(-4f, 56f, 422f), new Vector3(4f, 0.5f, 5f),  false, Vector3.zero,    0f, 0f),
+                (new Vector3( 2f, 58f, 431f), new Vector3(3f, 0.5f, 4f),  true,  Vector3.right,   3.0f, 0.95f),
+                (new Vector3(-2f, 59f, 440f), new Vector3(4f, 0.5f, 4f),  false, Vector3.zero,    0f, 0f),
+                (new Vector3( 1f, 60f, 449f), new Vector3(3f, 0.5f, 5f),  true,  Vector3.right,   2.5f, 1.1f),
+                (new Vector3( 0f, 62f, 457f), new Vector3(5f, 0.5f, 4f),  false, Vector3.zero,    0f, 0f),
+                (new Vector3( 0f, 64f, 464f), new Vector3(11f, 0.5f, 9f), false, Vector3.zero,    0f, 0f),
             };
 
             for (int i = 0; i < plats.Length; i++)
@@ -533,7 +510,7 @@ namespace AeroBloom
             // Mist particle effect
             GameObject mistGO = new GameObject("MistParticles");
             mistGO.transform.SetParent(s, false);
-            mistGO.transform.position = new Vector3(0f, 63f, 415f);
+            mistGO.transform.position = new Vector3(0f, 56f, 415f);
             ParticleSystem mps = mistGO.AddComponent<ParticleSystem>();
             var mm = mps.main;
             mm.startLifetime = 9f; mm.startSpeed = 0.15f;
@@ -545,8 +522,8 @@ namespace AeroBloom
             var ms = mps.shape; ms.shapeType = ParticleSystemShapeType.Box; ms.scale = new Vector3(40f, 16f, 110f);
             mistGO.GetComponent<ParticleSystemRenderer>().shadowCastingMode = ShadowCastingMode.Off;
 
-            Checkpoint(s, "Relay 04 Mist", new Vector3(0f, 71.7f, 466f), Quaternion.identity, p, ref cps);
-            AddSeed(s, new Vector3(0f, 73.5f, 465f), dir, p, ref seeds);
+            Checkpoint(s, "Relay 04 Mist", new Vector3(0f, 64.7f, 466f), Quaternion.identity, p, ref cps);
+            AddSeed(s, new Vector3(0f, 66.5f, 465f), dir, p, ref seeds);
         }
 
         // ─────────────────────────────────────────────
@@ -560,19 +537,20 @@ namespace AeroBloom
             Material shaftMat = LoadFA("FA_GlossyWhite");  if (shaftMat == null) shaftMat = p.AeroBuilding;
             Material eMat     = LoadFA("FA_EmissiveCyan");  if (eMat     == null) eMat     = p.EmissiveCyan;
 
-            Plat(s, "S5Approach", new Vector3(0f, 71f, 467f), new Vector3(9f, 0.5f, 6f), p.BlueSolid);
-            Sign(s, "AscentHint", "NOW WE GO UP!\nAscend the Towers!", new Vector3(0f, 73.6f, 468f), Quaternion.identity, p);
+            Plat(s, "S5Approach", new Vector3(0f, 64f, 467f), new Vector3(9f, 0.5f, 6f), p.BlueSolid);
+            Sign(s, "AscentHint", "NOW WE GO UP!\nAscend the Towers!", new Vector3(0f, 66.6f, 468f), Quaternion.identity, p);
 
-            // 7 disc towers — ascending from y~70 to y~140
+            // 7 disc towers — ascending from y~64 (S4 end), ~2m gain each
+            // disc top = shaftH + 0.4  (discThick=0.8, discThick*0.5=0.4)
             (Vector3 pos, float shaftH, float discR, bool moves, Vector3 mAxis, float mAmp, float mSpd)[] towers =
             {
-                (new Vector3( 0f, 0f, 478f),  78f,  5.0f, false, Vector3.zero,    0f,   0f),
-                (new Vector3( 6f, 0f, 494f),  90f,  4.5f, true,  Vector3.right,   3.0f, 0.80f),
-                (new Vector3(-5f, 0f, 509f), 101f,  5.0f, false, Vector3.zero,    0f,   0f),
-                (new Vector3( 5f, 0f, 523f), 112f,  4.5f, true,  Vector3.forward, 3.5f, 0.75f),
-                (new Vector3(-4f, 0f, 537f), 120f,  5.0f, false, Vector3.zero,    0f,   0f),
-                (new Vector3( 3f, 0f, 550f), 128f,  4.5f, true,  Vector3.right,   2.5f, 0.90f),
-                (new Vector3( 0f, 0f, 564f), 138f,  6.5f, false, Vector3.zero,    0f,   0f),
+                (new Vector3( 0f, 0f, 478f), 65.6f, 5.0f, false, Vector3.zero,    0f,   0f),   // top≈66  +2
+                (new Vector3( 6f, 0f, 494f), 67.6f, 4.5f, true,  Vector3.right,   3.0f, 0.80f),// top≈68  +2
+                (new Vector3(-5f, 0f, 509f), 69.6f, 5.0f, false, Vector3.zero,    0f,   0f),   // top≈70  +2
+                (new Vector3( 5f, 0f, 523f), 71.6f, 4.5f, true,  Vector3.forward, 3.5f, 0.75f),// top≈72  +2
+                (new Vector3(-4f, 0f, 537f), 73.6f, 5.0f, false, Vector3.zero,    0f,   0f),   // top≈74  +2
+                (new Vector3( 3f, 0f, 550f), 75.6f, 4.5f, true,  Vector3.right,   2.5f, 0.90f),// top≈76  +2
+                (new Vector3( 0f, 0f, 564f), 78.6f, 6.5f, false, Vector3.zero,    0f,   0f),   // top≈79  +3 (double jump finale)
             };
 
             for (int i = 0; i < towers.Length; i++)
@@ -607,10 +585,10 @@ namespace AeroBloom
             }
 
             // Bounce pad on the final disc to launch player into section 6
-            BounceAt(s, "AscentBoost", new Vector3(0f, 139.6f, 569f), p, new Vector3(0f, 18f, 6f));
+            BounceAt(s, "AscentBoost", new Vector3(0f, 79.5f, 569f), p, new Vector3(0f, 18f, 6f));
 
-            Checkpoint(s, "Relay 05 Ascent", new Vector3(0f, 139.5f, 567f), Quaternion.identity, p, ref cps);
-            AddSeed(s, new Vector3(0f, 142f, 567f), dir, p, ref seeds);
+            Checkpoint(s, "Relay 05 Ascent", new Vector3(0f, 79f, 567f), Quaternion.identity, p, ref cps);
+            AddSeed(s, new Vector3(0f, 81.5f, 567f), dir, p, ref seeds);
         }
 
         // ─────────────────────────────────────────────
@@ -623,10 +601,11 @@ namespace AeroBloom
             Material platMat = LoadFA("FA_Platform");      if (platMat == null) platMat = p.WhiteGlass;
             Material eMat    = LoadFA("FA_EmissiveCyan");  if (eMat    == null) eMat    = p.EmissiveCyan;
 
-            Sign(s, "RunHint", "SPRINT AHEAD!\nUse the Speed Gates!", new Vector3(0f, 141f, 575f), Quaternion.identity, p);
+            Sign(s, "RunHint", "SPRINT AHEAD!\nUse the Speed Gates!", new Vector3(0f, 82f, 575f), Quaternion.identity, p);
 
+            // Platforms start at y≈79 (S5 end), ~3m gain each
             float[] rz  = { 578f, 592f, 607f, 622f, 636f, 649f, 661f };
-            float[] ry  = { 138f, 141f, 144f, 142f, 148f, 152f, 159f };
+            float[] ry  = {  79f,  82f,  85f,  83f,  89f,  93f, 100f };
             float[] rx  = {   0f,   4f,  -3f,   5f,  -4f,   2f,   0f };
             float[] rw  = {  14f,  12f,  12f,  11f,  12f,  11f,  16f };
             bool[]  rmv = { false, false, true, false, true, false, false };
@@ -664,7 +643,7 @@ namespace AeroBloom
             // Crosswind on the exposed high section
             GameObject wz = new GameObject("HighWind");
             wz.transform.SetParent(s, false);
-            wz.transform.position = new Vector3(0f, 148f, 636f);
+            wz.transform.position = new Vector3(0f, 89f, 636f);
             BoxCollider wzbc = wz.AddComponent<BoxCollider>();
             wzbc.isTrigger = true; wzbc.size = new Vector3(30f, 20f, 60f);
             AeroWindZone wzs = wz.AddComponent<AeroWindZone>();
@@ -675,11 +654,11 @@ namespace AeroBloom
             // Decorative chrome spheres visible at altitude
             Material chromeMat = LoadFA("FA_Chrome"); if (chromeMat == null) chromeMat = p.Chrome;
             for (int i = 0; i < 5; i++)
-                MakeSphere(s, "HighSphere" + i, new Vector3(-18f + i * 9f, 145f + i * 2f, 612f + i * 6f),
+                MakeSphere(s, "HighSphere" + i, new Vector3(-18f + i * 9f, 86f + i * 2f, 612f + i * 6f),
                     1.5f + i * 0.4f, chromeMat, false);
 
-            Checkpoint(s, "Relay 06 HighRun", new Vector3(0f, 159.6f, 663f), Quaternion.identity, p, ref cps);
-            AddSeed(s, new Vector3(0f, 162f, 663f), dir, p, ref seeds);
+            Checkpoint(s, "Relay 06 HighRun", new Vector3(0f, 100.6f, 663f), Quaternion.identity, p, ref cps);
+            AddSeed(s, new Vector3(0f, 103f, 663f), dir, p, ref seeds);
         }
 
         // ─────────────────────────────────────────────
@@ -694,11 +673,11 @@ namespace AeroBloom
             Material eMat     = LoadFA("FA_EmissiveCyan"); if (eMat     == null) eMat     = p.EmissiveCyan;
             Material whiteMat = LoadFA("FA_GlossyWhite"); if (whiteMat == null) whiteMat = p.AeroBuilding;
 
-            Sign(s, "FinaleHint", "THE SUMMIT IS NEAR!\nJump through the Bubbles!", new Vector3(0f, 162f, 670f), Quaternion.identity, p);
+            Sign(s, "FinaleHint", "THE SUMMIT IS NEAR!\nJump through the Bubbles!", new Vector3(0f, 103f, 670f), Quaternion.identity, p);
 
-            // 11 bubble disc platforms ascending sharply
+            // 11 bubble disc platforms — start at y≈100 (S6 end), 3m gain each (double jump required)
             float[] bz = { 674f, 684f, 694f, 704f, 714f, 723f, 732f, 740f, 748f, 755f, 761f };
-            float[] by = { 160f, 170f, 181f, 193f, 206f, 219f, 232f, 244f, 255f, 263f, 270f };
+            float[] by = { 101f, 104f, 107f, 110f, 113f, 116f, 119f, 122f, 125f, 128f, 131f };
             float[] bx = {   0f,   4f,  -4f,   5f,  -5f,   3f,  -3f,   4f,  -2f,   1f,   0f };
             float[] br = { 4.5f, 4.0f, 4.5f, 4.0f, 5.0f, 4.0f, 4.5f, 4.0f, 4.5f, 4.0f, 5.5f };
 
@@ -714,8 +693,14 @@ namespace AeroBloom
                 Material bm = (i % 3 == 0) ? p.BlueSolid : (i % 3 == 1 ? p.CyanSolid : p.Bubble);
                 AssignMat(bub, bm);
 
-                // Decorative translucent bubble sphere on top (visual only)
-                MakeSphere(bub.transform, "BubVis", new Vector3(0f, 1.5f, 0f), br[i] * 1.1f, p.Bubble, false);
+                // Same CapsuleCollider sphere-degeneration fix as disc towers
+                Object.DestroyImmediate(bub.GetComponent<Collider>());
+                BoxCollider bubBox = bub.AddComponent<BoxCollider>();
+                bubBox.center = Vector3.zero;
+                bubBox.size   = new Vector3(1f, 2f, 1f);
+
+                // Decorative translucent bubble sphere on top (visual only, parented to section for correct world pos)
+                MakeSphere(s, "BubVis_" + i, new Vector3(bx[i], by[i] + 1.5f, bz[i]), br[i] * 1.1f, p.Bubble, false);
 
                 // Emissive glow cylinder slightly larger than platform
                 GameObject glowCyl = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
@@ -734,7 +719,7 @@ namespace AeroBloom
             }
 
             // ── FINISH PLATFORM ──
-            const float finishY = 272f;
+            const float finishY = 135f;  // 4m above last bubble at 131
             const float finishZ = 764f;
 
             Plat(s, "FinishPlatform", new Vector3(0f, finishY, finishZ), new Vector3(20f, 2f, 20f), whiteMat);
@@ -815,6 +800,14 @@ namespace AeroBloom
             disc.transform.localScale    = new Vector3(discRadius * 2f, discThick * 0.5f, discRadius * 2f);
             AssignMat(disc, discMat);
 
+            // CapsuleCollider on non-uniformly scaled cylinders degenerates to a sphere in PhysX,
+            // making the player stand discRadius metres above the visual surface. Replace with
+            // a flat BoxCollider that matches the cylinder's local extents exactly.
+            Object.DestroyImmediate(disc.GetComponent<Collider>());
+            BoxCollider discBox = disc.AddComponent<BoxCollider>();
+            discBox.center = Vector3.zero;
+            discBox.size   = new Vector3(1f, 2f, 1f);  // cylinder local: X/Z ±0.5, Y ±1
+
             return disc;
         }
 
@@ -831,6 +824,7 @@ namespace AeroBloom
             CharacterController cc = go.AddComponent<CharacterController>();
             cc.height = 1.8f; cc.radius = 0.35f;
             cc.center = new Vector3(0f, 0.9f, 0f);
+            cc.skinWidth = 0.02f;
             cc.stepOffset = 0.45f; cc.slopeLimit = 58f;
 
             AeroPlayerController player = go.AddComponent<AeroPlayerController>();
@@ -1030,21 +1024,6 @@ namespace AeroBloom
 
         private static float RF(System.Random r, float range) => (float)(r.NextDouble() * range);
 
-        private static void ApplyBuildingMaterials(GameObject building, Palette p)
-        {
-            Material faBody = LoadFA("FA_GlossyWhite");
-            Material faWin  = LoadFA("FA_BuildingWall");
-            Material bodyMat = faBody != null ? faBody : p.AeroBuilding;
-            Material winMat  = faWin  != null ? faWin  : p.AeroBuildingWindow;
-            foreach (Renderer r in building.GetComponentsInChildren<Renderer>())
-            {
-                int c = r.sharedMaterials.Length;
-                Material[] mats = new Material[c];
-                for (int i = 0; i < c; i++) mats[i] = (i == 0) ? bodyMat : winMat;
-                r.sharedMaterials = mats;
-            }
-        }
-
         // ─────────────────────────────────────────────
         // SCENE CLEANUP
         // ─────────────────────────────────────────────
@@ -1068,13 +1047,13 @@ namespace AeroBloom
         private static void DestroyCollider(GameObject go)
         {
             Collider c = go.GetComponent<Collider>();
-            if (c != null) DestroySmart(c);
+            if (c != null) Object.DestroyImmediate(c);
         }
 
         private static void DestroyCollidersRecursive(GameObject go)
         {
             foreach (Collider c in go.GetComponentsInChildren<Collider>())
-                DestroySmart(c);
+                Object.DestroyImmediate(c);
         }
 
         private static void DestroySmart(Object o)

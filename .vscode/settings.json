@@ -67,5 +67,7 @@
         "*.sln": "*.csproj",
         "*.slnx": "*.csproj"
     },
-    "dotnet.defaultSolution": "AeroBloom.slnx"
+    "dotnet.defaultSolution": "AeroBloom.slnx",
+    "csharp.suppressBuildAssetsNotification": true,
+    "csharp.suppressDotnetRestoreNotification": true
 }

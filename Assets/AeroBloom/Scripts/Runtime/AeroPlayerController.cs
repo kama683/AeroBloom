@@ -44,7 +44,7 @@ namespace AeroBloom
         [Header("Third Person")]
         public bool thirdPersonMode = true;
         public float tpCameraDistance = 6f;
-        public float tpCameraHeight = 2f;
+        public float tpCameraHeight = 1.2f;
         public float tpBodyRotateSpeed = 14f;
         public Transform bodyTransform;
         public Animator bodyAnimator;
@@ -437,6 +437,17 @@ namespace AeroBloom
                 // Keep camera above ground
                 if (desired.y < transform.position.y + 0.4f)
                     desired.y = transform.position.y + 0.4f;
+
+                // Camera collision — push camera forward when geometry is in the way
+                Vector3 toDesired = desired - lookTarget;
+                float wantedDist = toDesired.magnitude;
+                if (wantedDist > 0.01f)
+                {
+                    RaycastHit camHit;
+                    if (Physics.SphereCast(lookTarget, 0.12f, toDesired / wantedDist, out camHit,
+                            wantedDist, ~0, QueryTriggerInteraction.Ignore))
+                        desired = lookTarget + (toDesired / wantedDist) * Mathf.Max(camHit.distance - 0.1f, 0.4f);
+                }
 
                 cameraPivot.position = Vector3.Lerp(cameraPivot.position, desired, dt * 9f);
                 cameraPivot.LookAt(lookTarget);
