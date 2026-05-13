@@ -8,700 +8,1146 @@ namespace AeroBloom
     {
         public const string RootName = "AeroBloom_Runtime";
 
+        // ─────────────────────────────────────────────
+        // BOOTSTRAP
+        // ─────────────────────────────────────────────
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void BootstrapEmptyScene()
         {
-            // Never bootstrap inside the MainMenu scene
             var scene = UnityEngine.SceneManagement.SceneManager.GetActiveScene();
-            if (scene.name == "MainMenu" || scene.buildIndex == 0)
-                return;
-
-            if (Object.FindFirstObjectByType<AeroLevelDirector>() != null)
-                return;
-
+            if (scene.name == "MainMenu" || scene.buildIndex == 0) return;
+            if (Object.FindFirstObjectByType<AeroLevelDirector>() != null) return;
             BuildPrototypeScene(false);
         }
 
+        // ─────────────────────────────────────────────
+        // MAIN BUILD ENTRY
+        // ─────────────────────────────────────────────
         public static AeroLevelDirector BuildPrototypeScene(bool forceRebuild)
         {
-            if (forceRebuild)
-            {
-                DestroyNamedRoot(RootName);
-            }
-
+            if (forceRebuild) DestroyNamedRoot(RootName);
             AeroLevelDirector existing = Object.FindFirstObjectByType<AeroLevelDirector>();
-            if (existing != null && !forceRebuild)
-            {
-                return existing;
-            }
+            if (existing != null && !forceRebuild) return existing;
 
             AeroPackConfig pack = Resources.Load<AeroPackConfig>("AeroPackConfig");
 
-            GameObject root = new GameObject(RootName);
-            Palette palette = Palette.Create(pack);
-            RemoveTemplateSceneObjects(root.transform);
-            SetupEnvironment(root.transform, palette, pack);
+            GameObject rootGO  = new GameObject(RootName);
+            Transform  root    = rootGO.transform;
+            Transform  envRoot  = Child(root, "_ENVIRONMENT");
+            Transform  cityRoot = Child(root, "_CITY_BACKGROUND");
+            Transform  parkRoot = Child(root, "_PARKOUR_PATH");
+            Transform  vfxRoot  = Child(root, "_VFX");
 
-            Vector3 startPosition = new Vector3(0f, 0.62f, -3f);
-            Quaternion startRotation = Quaternion.identity;
+            Palette p = Palette.Create();
+            RemoveTemplateSceneObjects(root);
+            SetupEnvironment(envRoot, p);
+            CreateGroundPlane(envRoot, p, pack);
+            CreateAmbientParticles(vfxRoot);
+            CreateSoapBubbles(vfxRoot, p);
+            CreateCity(cityRoot, p, pack);
 
-            AeroLevelDirector director = root.AddComponent<AeroLevelDirector>();
-            AeroPlayerController player = CreatePlayer(root.transform, startPosition, startRotation, pack);
+            Vector3 startPos = new Vector3(0f, 1f, -5f);
+            AeroPlayerController player = CreatePlayer(root, startPos, Quaternion.identity, pack);
 
-            int seedCount;
-            int checkpointCount;
-            BuildCourse(root.transform, director, palette, pack, out seedCount, out checkpointCount);
+            AeroLevelDirector director = rootGO.AddComponent<AeroLevelDirector>();
+            int seeds = 0, cps = 0;
 
-            director.Configure(player, seedCount, checkpointCount, startPosition, startRotation);
-            director.ShowMessage("AeroBloom online. Restore the relays and collect Aero seeds.", 3f);
+            CreateSection1_GrasslandStart(parkRoot, director, p, ref seeds, ref cps);
+            CreateSection2_TowerDiscHops(parkRoot, director, p, ref seeds, ref cps);
+            CreateSection3_BlueBlockCanyon(parkRoot, director, p, ref seeds, ref cps);
+            CreateSection4_MistCrossing(parkRoot, director, p, ref seeds, ref cps);
+            CreateSection5_DiscTowerAscent(parkRoot, director, p, ref seeds, ref cps);
+            CreateSection6_HighPlatformRun(parkRoot, director, p, ref seeds, ref cps);
+            CreateSection7_BubbleJumpFinale(parkRoot, vfxRoot, director, p, ref seeds, ref cps);
+
+            director.Configure(player, seeds, cps, startPos, Quaternion.identity);
+            director.ShowMessage("AeroBloom — Reach the Summit!", 4f);
             return director;
         }
 
-        private static AeroPlayerController CreatePlayer(Transform parent, Vector3 position, Quaternion rotation, AeroPackConfig pack = null)
+        // ─────────────────────────────────────────────
+        // ENVIRONMENT
+        // ─────────────────────────────────────────────
+        private static void SetupEnvironment(Transform root, Palette p)
         {
-            GameObject playerObject = new GameObject("Player_AeroRunner");
-            playerObject.transform.SetParent(parent, false);
-            playerObject.transform.SetPositionAndRotation(position, rotation);
-            playerObject.tag = "Player";
+            // Frutiger Aero — bright clear blue sky, no fog
+            RenderSettings.fog = false;
 
-            CharacterController characterController = playerObject.AddComponent<CharacterController>();
-            characterController.height = 1.8f;
-            characterController.radius = 0.35f;
-            characterController.center = new Vector3(0f, 0.9f, 0f);
-            characterController.stepOffset = 0.45f;
-            characterController.slopeLimit = 58f;
+            RenderSettings.ambientMode  = AmbientMode.Flat;
+            RenderSettings.ambientLight = new Color(0.82f, 0.92f, 1f);
 
-            // AddComponent triggers Awake → EnsureCamera() creates a free-floating 3P pivot + camera
-            AeroPlayerController player = playerObject.AddComponent<AeroPlayerController>();
+            Shader skyShader = Shader.Find("Skybox/Procedural");
+            if (skyShader != null)
+            {
+                Material sky = new Material(skyShader);
+                sky.SetColor("_SkyTint",     new Color(0.18f, 0.60f, 1f));   // vibrant Frutiger blue
+                sky.SetColor("_GroundColor", new Color(0.52f, 0.84f, 0.56f)); // soft green horizon
+                sky.SetFloat("_AtmosphereThickness", 1.1f);  // thin — no orange tint
+                sky.SetFloat("_Exposure",  1.05f);
+                sky.SetFloat("_SunDisk",   2f);
+                sky.SetFloat("_SunSize",   0.05f);
+                RenderSettings.skybox = sky;
+            }
+
+            GameObject sunGO = new GameObject("Directional Light");
+            sunGO.transform.SetParent(root, false);
+            sunGO.transform.rotation = Quaternion.Euler(55f, -30f, 0f);
+            Light sun = sunGO.AddComponent<Light>();
+            sun.type      = LightType.Directional;
+            sun.color     = new Color(1f, 0.98f, 0.94f);
+            sun.intensity = 1.2f;
+            sun.shadows   = LightShadows.Soft;
+
+            SpawnPointLight(root, "AtmosA", new Vector3(-80f, 40f, 200f), new Color(0f,   0.83f, 1f),   2f, 120f);
+            SpawnPointLight(root, "AtmosB", new Vector3(250f, 60f, 450f), new Color(0.4f, 1f,   0.6f),  2f, 140f);
+
+            GameObject volGO = new GameObject("Aero Post FX");
+            volGO.transform.SetParent(root, false);
+            Volume vol = volGO.AddComponent<Volume>();
+            vol.isGlobal = true; vol.priority = 2f;
+            VolumeProfile prof = ScriptableObject.CreateInstance<VolumeProfile>();
+            vol.sharedProfile = prof;
+
+            Bloom bloom = prof.Add<Bloom>(true);
+            bloom.threshold.Override(0.70f);
+            bloom.intensity.Override(0.6f);
+            bloom.scatter.Override(0.5f);
+
+            ColorAdjustments ca = prof.Add<ColorAdjustments>(true);
+            ca.saturation.Override(28f);
+            ca.contrast.Override(8f);
+            ca.colorFilter.Override(new Color(0.96f, 1f, 1f));
+
+            Vignette vig = prof.Add<Vignette>(true);
+            vig.intensity.Override(0.10f);
+            vig.smoothness.Override(0.5f);
+        }
+
+        private static void CreateGroundPlane(Transform root, Palette p, AeroPackConfig pack)
+        {
+            // Bright green grass — no collider so player falls through and respawns
+            Material grassMat = null;
+            if (pack != null && pack.grassMaterial != null) grassMat = pack.grassMaterial;
+            if (grassMat == null) grassMat = LoadFA("FA_Ground");
+            if (grassMat == null) grassMat = p.Grass;
+
+            GameObject grass = GameObject.CreatePrimitive(PrimitiveType.Plane);
+            grass.name = "GrassPlane";
+            grass.transform.SetParent(root, false);
+            grass.transform.position   = new Vector3(0f, -3.5f, 380f);
+            grass.transform.localScale = new Vector3(120f, 1f, 120f);
+            AssignMat(grass, grassMat);
+            DestroyCollider(grass);
+
+            Material waterMat = LoadFA("FA_Ground");
+            if (waterMat == null) waterMat = p.Water;
+            GameObject water = GameObject.CreatePrimitive(PrimitiveType.Plane);
+            water.name = "WaterPlane";
+            water.transform.SetParent(root, false);
+            water.transform.position   = new Vector3(0f, -4f, 380f);
+            water.transform.localScale = new Vector3(130f, 1f, 130f);
+            AssignMat(water, waterMat);
+            DestroyCollider(water);
+        }
+
+
+
+        private static void CreateAmbientParticles(Transform root)
+        {
+            GameObject psGO = new GameObject("AmbientDust");
+            psGO.transform.SetParent(root, false);
+            psGO.transform.position = new Vector3(0f, 60f, 380f);
+            ParticleSystem ps = psGO.AddComponent<ParticleSystem>();
+
+            var main = ps.main;
+            main.startLifetime   = new ParticleSystem.MinMaxCurve(12f, 18f);
+            main.startSpeed      = 0.3f;
+            main.startSize       = new ParticleSystem.MinMaxCurve(0.06f, 0.14f);
+            main.startColor      = new ParticleSystem.MinMaxGradient(Color.white, new Color(0.6f, 1f, 0.7f));
+            main.maxParticles    = 2500;
+            main.simulationSpace = ParticleSystemSimulationSpace.World;
+
+            var emit = ps.emission; emit.rateOverTime = 100f;
+            var shape = ps.shape; shape.shapeType = ParticleSystemShapeType.Box; shape.scale = new Vector3(700f, 220f, 800f);
+
+            var vel = ps.velocityOverLifetime;
+            vel.enabled = true; vel.space = ParticleSystemSimulationSpace.World;
+            vel.y = new ParticleSystem.MinMaxCurve(0.12f, 0.28f);
+            vel.x = new ParticleSystem.MinMaxCurve(-0.06f, 0.06f);
+            vel.z = new ParticleSystem.MinMaxCurve(-0.06f, 0.06f);
+
+            psGO.GetComponent<ParticleSystemRenderer>().shadowCastingMode = ShadowCastingMode.Off;
+        }
+
+        private static void CreateSoapBubbles(Transform root, Palette p)
+        {
+            System.Random r = new System.Random(99);
+            for (int i = 0; i < 60; i++)
+            {
+                float bx = (float)(r.NextDouble() - 0.5) * 200f;
+                float bz = (float)r.NextDouble() * 750f;
+                float by = (float)r.NextDouble() * 25f + 2f;
+                float sc = (float)r.NextDouble() * 1.2f + 0.4f;
+
+                GameObject bub = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                bub.name = "SoapBubble " + i;
+                bub.transform.SetParent(root, false);
+                bub.transform.position   = new Vector3(bx, by, bz);
+                bub.transform.localScale = Vector3.one * sc;
+                AssignMat(bub, p.Bubble);
+                DestroyCollider(bub);
+
+                SoapBubbleFloat sbf = bub.AddComponent<SoapBubbleFloat>();
+                sbf.riseSpeed     = 0.3f + (float)r.NextDouble() * 0.4f;
+                sbf.swayAmplitude = 0.4f + (float)r.NextDouble() * 0.6f;
+                sbf.swayFreqX     = 0.5f + (float)r.NextDouble() * 0.5f;
+                sbf.swayFreqZ     = 0.6f + (float)r.NextDouble() * 0.6f;
+                sbf.maxHeight     = 50f  + (float)r.NextDouble() * 40f;
+            }
+        }
+
+        // ─────────────────────────────────────────────
+        // CITY BACKGROUND — white organic towers on the sides
+        // ─────────────────────────────────────────────
+        private static void CreateCity(Transform root, Palette p, AeroPackConfig pack)
+        {
+            System.Random r = new System.Random(42);
+            Material wallMat  = LoadFA("FA_BuildingWall");  if (wallMat  == null) wallMat  = p.AeroBuilding;
+            Material glassMat = LoadFA("FA_BuildingGlass"); if (glassMat == null) glassMat = p.AeroBuildingWindow;
+
+            // Left tower cluster x=-180 to -70
+            for (int i = 0; i < 14; i++)
+            {
+                float bx   = -180f + (float)r.NextDouble() * 110f;
+                float bz   = (float)r.NextDouble() * 750f;
+                float h    = 50f + RF(r, 80f);
+                float w    = 9f  + RF(r, 14f);
+                int   type = (int)(r.NextDouble() * 3);
+                float yaw  = (float)r.NextDouble() * 360f;
+
+                if (pack != null && pack.towerBuildingPrefab != null && type == 0)
+                    SpawnPackBuilding(root, pack.towerBuildingPrefab, "TowerL" + i, bx, h, bz, yaw, p);
+                else if (pack != null && pack.basicBuildingPrefab != null && type == 1)
+                    SpawnPackBuilding(root, pack.basicBuildingPrefab, "BldgL" + i, bx, h, bz, yaw, p);
+                else
+                    ProceduralBuilding(root, "PL" + i, new Vector3(bx, h * 0.5f - 5f, bz),
+                        new Vector3(w, h, w), Quaternion.Euler(0, yaw, 0), type, wallMat, glassMat, p);
+            }
+
+            // Right tower cluster x=70 to 180
+            for (int i = 0; i < 14; i++)
+            {
+                float bx   = 70f + (float)r.NextDouble() * 110f;
+                float bz   = (float)r.NextDouble() * 750f;
+                float h    = 50f + RF(r, 80f);
+                float w    = 9f  + RF(r, 14f);
+                int   type = (int)(r.NextDouble() * 3);
+                float yaw  = (float)r.NextDouble() * 360f;
+
+                if (pack != null && pack.towerBuildingPrefab != null && type == 0)
+                    SpawnPackBuilding(root, pack.towerBuildingPrefab, "TowerR" + i, bx, h, bz, yaw, p);
+                else if (pack != null && pack.basicBuildingPrefab != null && type == 1)
+                    SpawnPackBuilding(root, pack.basicBuildingPrefab, "BldgR" + i, bx, h, bz, yaw, p);
+                else
+                    ProceduralBuilding(root, "PR" + i, new Vector3(bx, h * 0.5f - 5f, bz),
+                        new Vector3(w, h, w), Quaternion.Euler(0, yaw, 0), type, wallMat, glassMat, p);
+            }
+
+            // Floating chrome deco spheres (fewer, only near level)
+            Material chromeMat = LoadFA("FA_Chrome"); if (chromeMat == null) chromeMat = p.Chrome;
+            for (int i = 0; i < 12; i++)
+            {
+                float sx = (float)(r.NextDouble() - 0.5) * 300f;
+                float sz = (float)r.NextDouble() * 650f;
+                float sy = 20f + RF(r, 40f);
+                float sc = 2f  + RF(r, 4f);
+                MakeSphere(root, "DecoSphere" + i, new Vector3(sx, sy, sz), sc, chromeMat, false);
+            }
+        }
+
+        private static void SpawnPackBuilding(Transform root, GameObject prefab, string name,
+            float bx, float h, float bz, float yaw, Palette p)
+        {
+            GameObject bld = Object.Instantiate(prefab);
+            bld.name = name;
+            bld.transform.SetParent(root, false);
+            bld.transform.position = new Vector3(bx, h * 0.5f - 5f, bz);
+            bld.transform.rotation = Quaternion.Euler(0, yaw, 0);
+            DestroyCollidersRecursive(bld);
+            ApplyBuildingMaterials(bld, p);
+        }
+
+        private static void ProceduralBuilding(Transform parent, string name,
+            Vector3 pos, Vector3 size, Quaternion rot, int type, Material wall, Material glass, Palette p)
+        {
+            Material bodyMat = LoadFA("FA_GlossyWhite"); if (bodyMat == null) bodyMat = p.AeroBuilding;
+
+            GameObject body = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            body.name = name;
+            body.transform.SetParent(parent, false);
+            body.transform.position   = pos;
+            body.transform.rotation   = rot;
+            body.transform.localScale = size;
+            AssignMat(body, bodyMat);
+            DestroyCollider(body);
+
+            Material winBand = LoadFA("FA_BuildingGlass"); if (winBand == null) winBand = p.AeroBuildingWindow;
+            float bandStep   = Mathf.Max(3.5f, size.y / Mathf.Max(1f, Mathf.Round(size.y / 3.5f)));
+            float bandHeight = bandStep * 0.55f;
+            for (float wy = -size.y * 0.48f + bandStep; wy < size.y * 0.48f; wy += bandStep)
+            {
+                GameObject wns = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                wns.name = "Win";
+                wns.transform.SetParent(body.transform, false);
+                wns.transform.localPosition = new Vector3(0f, wy / size.y, 0f);
+                wns.transform.localScale    = new Vector3(1.002f, bandHeight / size.y, 1.002f);
+                AssignMat(wns, winBand);
+                DestroyCollider(wns);
+            }
+
+            if (size.y > 50f)
+            {
+                Material trimMat = LoadFA("FA_EmissiveCyan"); if (trimMat == null) trimMat = p.EmissiveCyan;
+                for (float ty = 25f; ty < size.y - 5f; ty += 28f)
+                {
+                    GameObject trim = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                    trim.name = "Trim";
+                    trim.transform.SetParent(body.transform, false);
+                    trim.transform.localPosition = new Vector3(0f, (ty - size.y * 0.5f) / size.y, 0f);
+                    trim.transform.localScale    = new Vector3(1.04f, 0.05f / size.y, 1.04f);
+                    AssignMat(trim, trimMat);
+                    DestroyCollider(trim);
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────────
+        // SECTION 1 — GRASSLAND START (z 0 → 80, y 0 → 3)
+        // ─────────────────────────────────────────────
+        private static void CreateSection1_GrasslandStart(Transform root, AeroLevelDirector dir,
+            Palette p, ref int seeds, ref int cps)
+        {
+            Transform s = Child(root, "Section1_GrasslandStart");
+
+            Plat(s, "Spawn Island", new Vector3(0f, 0f, 0f), new Vector3(22f, 1f, 22f), p.BlueSolid);
+
+            Sign(s, "Welcome",  "AEROBLOOM\nAscend the Summit",      new Vector3(-7f, 1.6f,  3f), Quaternion.Euler(0, 20f,  0), p);
+            Sign(s, "Controls", "WASD Move  SPACE Jump\nSHIFT Sprint", new Vector3(7f,  1.6f,  3f), Quaternion.Euler(0,-20f,  0), p);
+            Sign(s, "Goal",     "Collect AeroSeeds\nReach the top!",   new Vector3(0f,  1.6f, 10f), Quaternion.identity,          p);
+
+            // 8 stepping platforms gently rising north
+            float[] sz = { 14f, 22f, 31f, 40f, 49f, 58f, 67f, 76f };
+            float[] sy = {  0f,  0.5f, 0.8f, 1.2f, 1f,  1.8f, 1.5f, 2.5f };
+            float[] sx = {  0f,  2f,  -3f,  4f,  -2f,  3f,  -2f,  0f };
+            float[] sw = {  8f,  7f,   7f,  6.5f, 7f,  6f,   6f,  10f };
+
+            for (int i = 0; i < 8; i++)
+            {
+                Material m = (i % 3 == 0) ? p.BlueSolid : (i % 3 == 1 ? p.CyanSolid : p.WhiteGlass);
+                Plat(s, "GrassStep " + (i + 1), new Vector3(sx[i], sy[i], sz[i]), new Vector3(sw[i], 0.5f, 6f), m);
+                if (i == 2) AddSeed(s, new Vector3(sx[i], sy[i] + 1.5f, sz[i]), dir, p, ref seeds);
+                if (i == 5) AddSeed(s, new Vector3(sx[i], sy[i] + 1.5f, sz[i]), dir, p, ref seeds);
+            }
+
+            // Organic white pillars flanking the start corridor
+            Material whiteMat = LoadFA("FA_GlossyWhite"); if (whiteMat == null) whiteMat = p.AeroBuilding;
+            BoxNoColl(s, "Pillar L1", new Vector3(-18f, 12f, 15f), new Vector3(4f, 24f, 4f), whiteMat);
+            BoxNoColl(s, "Pillar R1", new Vector3( 18f, 12f, 15f), new Vector3(4f, 24f, 4f), whiteMat);
+            BoxNoColl(s, "Pillar L2", new Vector3(-20f, 20f, 45f), new Vector3(3f, 40f, 3f), whiteMat);
+            BoxNoColl(s, "Pillar R2", new Vector3( 20f, 20f, 45f), new Vector3(3f, 40f, 3f), whiteMat);
+
+            // Ground-level lime accent patches (visual only)
+            Material limeE = LoadFA("FA_EmissiveLime"); if (limeE == null) limeE = p.LimeSolid;
+            BoxNoColl(s, "GrassPatchL", new Vector3(-12f, -0.05f, 30f), new Vector3(8f, 0.1f, 20f), limeE);
+            BoxNoColl(s, "GrassPatchR", new Vector3( 12f, -0.05f, 30f), new Vector3(8f, 0.1f, 20f), limeE);
+
+            Checkpoint(s, "Relay 01 Grassland", new Vector3(0f, 3f, 78f), Quaternion.identity, p, ref cps);
+        }
+
+        // ─────────────────────────────────────────────
+        // SECTION 2 — TOWER DISC HOPS (z 80 → 220, y 3 → 28)
+        // ─────────────────────────────────────────────
+        private static void CreateSection2_TowerDiscHops(Transform root, AeroLevelDirector dir,
+            Palette p, ref int seeds, ref int cps)
+        {
+            Transform s = Child(root, "Section2_TowerDiscHops");
+
+            Plat(s, "ApproachA", new Vector3(0f, 2.5f, 82f), new Vector3(8f, 0.5f, 5f), p.CyanSolid);
+            Sign(s, "DiscHint", "Hop the Disc Towers!\nTime the moving ones!", new Vector3(0f, 4.6f, 83f), Quaternion.identity, p);
+
+            Material shaftMat = LoadFA("FA_Chrome");       if (shaftMat == null) shaftMat = p.Chrome;
+            Material eMat     = LoadFA("FA_EmissiveCyan"); if (eMat     == null) eMat     = p.EmissiveCyan;
+
+            // shaftH = height of shaft from ground; player needs to reach disc top
+            (Vector3 pos, float shaftH, float discR, bool moves, Vector3 mAxis, float mAmp, float mSpd)[] towers =
+            {
+                (new Vector3( 0f, 0f,  93f),  10f, 5.0f, false, Vector3.zero,    0f,  0f),
+                (new Vector3( 6f, 0f, 109f),  14f, 4.5f, false, Vector3.zero,    0f,  0f),
+                (new Vector3(-5f, 0f, 125f),  17f, 4.5f, true,  Vector3.right,   3.5f, 0.85f),
+                (new Vector3( 5f, 0f, 141f),  19f, 5.0f, false, Vector3.zero,    0f,  0f),
+                (new Vector3(-4f, 0f, 157f),  21f, 4.0f, true,  Vector3.forward, 3.0f, 0.95f),
+                (new Vector3( 4f, 0f, 173f),  23f, 4.5f, false, Vector3.zero,    0f,  0f),
+                (new Vector3(-3f, 0f, 189f),  25f, 4.0f, true,  Vector3.right,   2.5f, 1.0f),
+                (new Vector3( 0f, 0f, 206f),  28f, 6.0f, false, Vector3.zero,    0f,  0f),
+            };
+
+            for (int i = 0; i < towers.Length; i++)
+            {
+                var t = towers[i];
+                Material dm = (i % 2 == 0) ? p.CyanSolid : p.BlueSolid;
+                GameObject disc = CreateDiscTower(s, "DiscTower " + (i + 1), t.pos, t.shaftH, t.discR, 0.7f, shaftMat, dm);
+
+                // Emissive edge ring on disc top
+                GameObject edgeCyl = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+                edgeCyl.name = "DiscEdge";
+                edgeCyl.transform.SetParent(disc.transform, false);
+                edgeCyl.transform.localPosition = new Vector3(0f, 1f, 0f);   // top face in cylinder local space
+                edgeCyl.transform.localScale    = new Vector3((t.discR * 2f + 0.6f) / (t.discR * 2f), 0.1f / 0.7f, (t.discR * 2f + 0.6f) / (t.discR * 2f));
+                AssignMat(edgeCyl, eMat);
+                DestroyCollider(edgeCyl);
+
+                if (t.moves)
+                {
+                    PlatformMover pm = disc.AddComponent<PlatformMover>();
+                    pm.moveAxis    = t.mAxis;
+                    pm.amplitude   = t.mAmp;
+                    pm.speed       = t.mSpd;
+                    pm.phaseOffset = i * 0.55f;
+                }
+
+                SpawnPointLight(disc.transform, "DiscGlow", new Vector3(0f, 2f, 0f), new Color(0f, 0.8f, 1f), 1.0f, 16f);
+                if (i % 2 == 0) AddSeed(s, t.pos + new Vector3(0f, t.shaftH + 2.5f, 0f), dir, p, ref seeds);
+            }
+
+            AddSeed(s, new Vector3(0f, 31f, 206f), dir, p, ref seeds);
+            Checkpoint(s, "Relay 02 Disc Hops", new Vector3(0f, 29f, 210f), Quaternion.identity, p, ref cps);
+        }
+
+        // ─────────────────────────────────────────────
+        // SECTION 3 — BLUE BLOCK CANYON (z 220 → 360, y 25 → 55)
+        // ─────────────────────────────────────────────
+        private static void CreateSection3_BlueBlockCanyon(Transform root, AeroLevelDirector dir,
+            Palette p, ref int seeds, ref int cps)
+        {
+            Transform s = Child(root, "Section3_BlueBlockCanyon");
+
+            Material canyonWall = LoadFA("FA_GlassBlue");   if (canyonWall == null) canyonWall = p.Glass;
+            Material eMat       = LoadFA("FA_EmissiveCyan"); if (eMat       == null) eMat       = p.EmissiveCyan;
+            Material limeMat    = LoadFA("FA_EmissiveLime"); if (limeMat    == null) limeMat    = p.EmissiveLime;
+
+            // Canyon wall columns flanking the path
+            for (int row = 0; row < 9; row++)
+            {
+                float wallZ = 222f + row * 16f;
+                float wallH = 32f + row * 4f;
+                BoxNoColl(s, "WallL" + row, new Vector3(-15f, 28f + wallH * 0.5f, wallZ), new Vector3(10f, wallH, 13f), canyonWall);
+                BoxNoColl(s, "WallR" + row, new Vector3( 15f, 28f + wallH * 0.5f, wallZ), new Vector3(10f, wallH, 13f), canyonWall);
+                BoxNoColl(s, "TrimL" + row, new Vector3(-15f, 28f + wallH,         wallZ), new Vector3(10.2f, 0.4f, 13.2f), eMat);
+                BoxNoColl(s, "TrimR" + row, new Vector3( 15f, 28f + wallH,         wallZ), new Vector3(10.2f, 0.4f, 13.2f), eMat);
+            }
+
+            // 10 jumping platforms through the canyon
+            float[] cpz = { 222f, 232f, 243f, 254f, 265f, 278f, 291f, 308f, 326f, 345f };
+            float[] cpy = {  25f,  28f,  31f,  29f,  35f,  39f,  34f,  43f,  49f,  54f };
+            float[] cpx = {   0f,   4f,  -4f,   5f,  -5f,   3f,  -3f,   4f,  -2f,   0f };
+            float[] cpw = {   9f,   7f,   7f,   6f,   7f,   6f,   7f,   6f,   7f,  11f };
+
+            for (int i = 0; i < cpz.Length; i++)
+            {
+                Material cm = (i % 2 == 0) ? p.BlueSolid : p.CyanSolid;
+                Plat(s, "Canyon " + (i + 1), new Vector3(cpx[i], cpy[i], cpz[i]), new Vector3(cpw[i], 0.6f, 5.5f), cm);
+                if (i == 2 || i == 6)
+                    AddSeed(s, new Vector3(cpx[i], cpy[i] + 1.5f, cpz[i]), dir, p, ref seeds);
+            }
+
+            // Wind zone — gentle lateral push through canyon
+            GameObject wz = new GameObject("CanyonWind");
+            wz.transform.SetParent(s, false);
+            wz.transform.position = new Vector3(0f, 38f, 285f);
+            BoxCollider wzbc = wz.AddComponent<BoxCollider>();
+            wzbc.isTrigger = true; wzbc.size = new Vector3(28f, 28f, 130f);
+            AeroWindZone wzs = wz.AddComponent<AeroWindZone>();
+            wzs.windDirection = new Vector3(0.35f, 0f, 0f);
+            wzs.windStrength  = 2.5f;
+            wzs.fluctuate     = true;
+
+            // End landing platform
+            Plat(s, "CanyonEnd", new Vector3(0f, 54f, 355f), new Vector3(12f, 0.7f, 9f), p.BlueSolid);
+            BoxNoColl(s, "CanyonEndGlow", new Vector3(0f, 54.4f, 355f), new Vector3(12.5f, 0.15f, 9.5f), limeMat);
+
+            Checkpoint(s, "Relay 03 Canyon", new Vector3(0f, 54.8f, 358f), Quaternion.identity, p, ref cps);
+            AddSeed(s, new Vector3(0f, 57f, 356f), dir, p, ref seeds);
+        }
+
+        // ─────────────────────────────────────────────
+        // SECTION 4 — MIST CROSSING (z 360 → 462, y 54 → 72)
+        // ─────────────────────────────────────────────
+        private static void CreateSection4_MistCrossing(Transform root, AeroLevelDirector dir,
+            Palette p, ref int seeds, ref int cps)
+        {
+            Transform s = Child(root, "Section4_MistCrossing");
+            Material eMat = LoadFA("FA_EmissiveLime"); if (eMat == null) eMat = p.EmissiveLime;
+
+            Sign(s, "MistHint", "Careful...\nThe mist hides the path.", new Vector3(0f, 57f, 362f), Quaternion.identity, p);
+
+            // 12 narrow platforms — mix of static and moving
+            (Vector3 pos, Vector3 size, bool moves, Vector3 axis, float amp, float spd)[] plats =
+            {
+                (new Vector3( 0f, 55f, 366f), new Vector3(5f, 0.5f, 5f),  false, Vector3.zero,    0f, 0f),
+                (new Vector3( 4f, 57f, 376f), new Vector3(3f, 0.5f, 5f),  true,  Vector3.right,   3.5f, 0.9f),
+                (new Vector3(-3f, 58f, 386f), new Vector3(4f, 0.5f, 4f),  false, Vector3.zero,    0f, 0f),
+                (new Vector3( 5f, 60f, 395f), new Vector3(3f, 0.5f, 5f),  true,  Vector3.right,   3.0f, 1.0f),
+                (new Vector3(-2f, 61f, 404f), new Vector3(5f, 0.5f, 4f),  false, Vector3.zero,    0f, 0f),
+                (new Vector3( 3f, 62f, 413f), new Vector3(3f, 0.5f, 4f),  true,  Vector3.forward, 2.5f, 0.8f),
+                (new Vector3(-4f, 63f, 422f), new Vector3(4f, 0.5f, 5f),  false, Vector3.zero,    0f, 0f),
+                (new Vector3( 2f, 65f, 431f), new Vector3(3f, 0.5f, 4f),  true,  Vector3.right,   3.0f, 0.95f),
+                (new Vector3(-2f, 66f, 440f), new Vector3(4f, 0.5f, 4f),  false, Vector3.zero,    0f, 0f),
+                (new Vector3( 1f, 67f, 449f), new Vector3(3f, 0.5f, 5f),  true,  Vector3.right,   2.5f, 1.1f),
+                (new Vector3( 0f, 69f, 457f), new Vector3(5f, 0.5f, 4f),  false, Vector3.zero,    0f, 0f),
+                (new Vector3( 0f, 71f, 464f), new Vector3(11f, 0.5f, 9f), false, Vector3.zero,    0f, 0f),
+            };
+
+            for (int i = 0; i < plats.Length; i++)
+            {
+                var pl = plats[i];
+                Material mat = (i % 3 == 2) ? p.CyanSolid : p.WhiteGlass;
+                GameObject plt = Plat(s, "MistPlat " + (i + 1), pl.pos, pl.size, mat);
+
+                if (pl.moves)
+                {
+                    PlatformMover mv = plt.AddComponent<PlatformMover>();
+                    mv.moveAxis    = pl.axis;
+                    mv.amplitude   = pl.amp;
+                    mv.speed       = pl.spd;
+                    mv.phaseOffset = i * 0.7f;
+                }
+
+                // Glowing edge so player can see platforms through mist
+                BoxChild(plt.transform, "GlowEdge", new Vector3(0f, 0.25f, 0f),
+                    new Vector3(pl.size.x + 0.25f, 0.1f, pl.size.z + 0.25f), eMat);
+
+                if (i == 4 || i == 8)
+                    AddSeed(s, pl.pos + new Vector3(0f, 1.5f, 0f), dir, p, ref seeds);
+            }
+
+            // Mist particle effect
+            GameObject mistGO = new GameObject("MistParticles");
+            mistGO.transform.SetParent(s, false);
+            mistGO.transform.position = new Vector3(0f, 63f, 415f);
+            ParticleSystem mps = mistGO.AddComponent<ParticleSystem>();
+            var mm = mps.main;
+            mm.startLifetime = 9f; mm.startSpeed = 0.15f;
+            mm.startSize = new ParticleSystem.MinMaxCurve(3f, 7f);
+            mm.startColor = new Color(0.87f, 0.95f, 1f, 0.10f);
+            mm.maxParticles = 100;
+            mm.simulationSpace = ParticleSystemSimulationSpace.World;
+            var me = mps.emission; me.rateOverTime = 12f;
+            var ms = mps.shape; ms.shapeType = ParticleSystemShapeType.Box; ms.scale = new Vector3(40f, 16f, 110f);
+            mistGO.GetComponent<ParticleSystemRenderer>().shadowCastingMode = ShadowCastingMode.Off;
+
+            Checkpoint(s, "Relay 04 Mist", new Vector3(0f, 71.7f, 466f), Quaternion.identity, p, ref cps);
+            AddSeed(s, new Vector3(0f, 73.5f, 465f), dir, p, ref seeds);
+        }
+
+        // ─────────────────────────────────────────────
+        // SECTION 5 — DISC TOWER ASCENT (z 462 → 572, y 70 → 140)
+        // ─────────────────────────────────────────────
+        private static void CreateSection5_DiscTowerAscent(Transform root, AeroLevelDirector dir,
+            Palette p, ref int seeds, ref int cps)
+        {
+            Transform s = Child(root, "Section5_DiscTowerAscent");
+
+            Material shaftMat = LoadFA("FA_GlossyWhite");  if (shaftMat == null) shaftMat = p.AeroBuilding;
+            Material eMat     = LoadFA("FA_EmissiveCyan");  if (eMat     == null) eMat     = p.EmissiveCyan;
+
+            Plat(s, "S5Approach", new Vector3(0f, 71f, 467f), new Vector3(9f, 0.5f, 6f), p.BlueSolid);
+            Sign(s, "AscentHint", "NOW WE GO UP!\nAscend the Towers!", new Vector3(0f, 73.6f, 468f), Quaternion.identity, p);
+
+            // 7 disc towers — ascending from y~70 to y~140
+            (Vector3 pos, float shaftH, float discR, bool moves, Vector3 mAxis, float mAmp, float mSpd)[] towers =
+            {
+                (new Vector3( 0f, 0f, 478f),  78f,  5.0f, false, Vector3.zero,    0f,   0f),
+                (new Vector3( 6f, 0f, 494f),  90f,  4.5f, true,  Vector3.right,   3.0f, 0.80f),
+                (new Vector3(-5f, 0f, 509f), 101f,  5.0f, false, Vector3.zero,    0f,   0f),
+                (new Vector3( 5f, 0f, 523f), 112f,  4.5f, true,  Vector3.forward, 3.5f, 0.75f),
+                (new Vector3(-4f, 0f, 537f), 120f,  5.0f, false, Vector3.zero,    0f,   0f),
+                (new Vector3( 3f, 0f, 550f), 128f,  4.5f, true,  Vector3.right,   2.5f, 0.90f),
+                (new Vector3( 0f, 0f, 564f), 138f,  6.5f, false, Vector3.zero,    0f,   0f),
+            };
+
+            for (int i = 0; i < towers.Length; i++)
+            {
+                var t = towers[i];
+                Material dm = (i % 2 == 0) ? p.BlueSolid : p.CyanSolid;
+                GameObject disc = CreateDiscTower(s, "AscentTower " + (i + 1), t.pos, t.shaftH, t.discR, 0.8f, shaftMat, dm);
+
+                // Emissive edge cylinder
+                GameObject edge = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+                edge.name = "Edge";
+                edge.transform.SetParent(disc.transform, false);
+                edge.transform.localPosition = new Vector3(0f, 1f, 0f);
+                edge.transform.localScale    = new Vector3((t.discR * 2f + 0.7f) / (t.discR * 2f), 0.1f / 0.8f, (t.discR * 2f + 0.7f) / (t.discR * 2f));
+                AssignMat(edge, eMat);
+                DestroyCollider(edge);
+
+                if (t.moves)
+                {
+                    PlatformMover pm = disc.AddComponent<PlatformMover>();
+                    pm.moveAxis    = t.mAxis;
+                    pm.amplitude   = t.mAmp;
+                    pm.speed       = t.mSpd;
+                    pm.phaseOffset = i * 0.6f;
+                }
+
+                SpawnPointLight(disc.transform, "Glow", new Vector3(0f, 2.5f, 0f),
+                    new Color(0f, 0.72f + i * 0.04f, 1f), 1.5f, 22f);
+
+                if (i % 2 == 0)
+                    AddSeed(s, t.pos + new Vector3(0f, t.shaftH + 2.5f, 0f), dir, p, ref seeds);
+            }
+
+            // Bounce pad on the final disc to launch player into section 6
+            BounceAt(s, "AscentBoost", new Vector3(0f, 139.6f, 569f), p, new Vector3(0f, 18f, 6f));
+
+            Checkpoint(s, "Relay 05 Ascent", new Vector3(0f, 139.5f, 567f), Quaternion.identity, p, ref cps);
+            AddSeed(s, new Vector3(0f, 142f, 567f), dir, p, ref seeds);
+        }
+
+        // ─────────────────────────────────────────────
+        // SECTION 6 — HIGH PLATFORM RUN (z 572 → 667, y 138 → 162)
+        // ─────────────────────────────────────────────
+        private static void CreateSection6_HighPlatformRun(Transform root, AeroLevelDirector dir,
+            Palette p, ref int seeds, ref int cps)
+        {
+            Transform s = Child(root, "Section6_HighPlatformRun");
+            Material platMat = LoadFA("FA_Platform");      if (platMat == null) platMat = p.WhiteGlass;
+            Material eMat    = LoadFA("FA_EmissiveCyan");  if (eMat    == null) eMat    = p.EmissiveCyan;
+
+            Sign(s, "RunHint", "SPRINT AHEAD!\nUse the Speed Gates!", new Vector3(0f, 141f, 575f), Quaternion.identity, p);
+
+            float[] rz  = { 578f, 592f, 607f, 622f, 636f, 649f, 661f };
+            float[] ry  = { 138f, 141f, 144f, 142f, 148f, 152f, 159f };
+            float[] rx  = {   0f,   4f,  -3f,   5f,  -4f,   2f,   0f };
+            float[] rw  = {  14f,  12f,  12f,  11f,  12f,  11f,  16f };
+            bool[]  rmv = { false, false, true, false, true, false, false };
+
+            for (int i = 0; i < rz.Length; i++)
+            {
+                Material mat = (i % 3 == 0) ? p.BlueSolid : (i % 3 == 1 ? p.CyanSolid : platMat);
+                GameObject plt = Plat(s, "HighRun " + (i + 1), new Vector3(rx[i], ry[i], rz[i]),
+                    new Vector3(rw[i], 0.6f, 12f), mat);
+
+                if (rmv[i])
+                {
+                    PlatformMover mv = plt.AddComponent<PlatformMover>();
+                    mv.moveAxis    = Vector3.right;
+                    mv.amplitude   = 4.5f;
+                    mv.speed       = 0.75f;
+                    mv.phaseOffset = i * 0.5f;
+                }
+
+                // Emissive edge trim
+                BoxChild(plt.transform, "RunTrim", new Vector3(0f, 0.3f, 0f),
+                    new Vector3(rw[i] + 0.35f, 0.12f, 12.35f), eMat);
+
+                if (i == 1)
+                    SpeedGate(s, "SpeedGate1", new Vector3(rx[i], ry[i] + 0.3f, rz[i] + 2f),
+                        Quaternion.identity, p, new Vector3(0f, 0f, 14f));
+                if (i == 4)
+                    SpeedGate(s, "SpeedGate2", new Vector3(rx[i], ry[i] + 0.3f, rz[i] + 2f),
+                        Quaternion.identity, p, new Vector3(0f, 0f, 14f));
+
+                if (i == 2 || i == 5)
+                    AddSeed(s, new Vector3(rx[i], ry[i] + 1.8f, rz[i]), dir, p, ref seeds);
+            }
+
+            // Crosswind on the exposed high section
+            GameObject wz = new GameObject("HighWind");
+            wz.transform.SetParent(s, false);
+            wz.transform.position = new Vector3(0f, 148f, 636f);
+            BoxCollider wzbc = wz.AddComponent<BoxCollider>();
+            wzbc.isTrigger = true; wzbc.size = new Vector3(30f, 20f, 60f);
+            AeroWindZone wzs = wz.AddComponent<AeroWindZone>();
+            wzs.windDirection = new Vector3(0.5f, 0f, 0f);
+            wzs.windStrength  = 3.0f;
+            wzs.fluctuate     = true;
+
+            // Decorative chrome spheres visible at altitude
+            Material chromeMat = LoadFA("FA_Chrome"); if (chromeMat == null) chromeMat = p.Chrome;
+            for (int i = 0; i < 5; i++)
+                MakeSphere(s, "HighSphere" + i, new Vector3(-18f + i * 9f, 145f + i * 2f, 612f + i * 6f),
+                    1.5f + i * 0.4f, chromeMat, false);
+
+            Checkpoint(s, "Relay 06 HighRun", new Vector3(0f, 159.6f, 663f), Quaternion.identity, p, ref cps);
+            AddSeed(s, new Vector3(0f, 162f, 663f), dir, p, ref seeds);
+        }
+
+        // ─────────────────────────────────────────────
+        // SECTION 7 — BUBBLE JUMP FINALE (z 667 → 765, y 159 → 272)
+        // ─────────────────────────────────────────────
+        private static void CreateSection7_BubbleJumpFinale(Transform root, Transform vfxRoot,
+            AeroLevelDirector dir, Palette p, ref int seeds, ref int cps)
+        {
+            Transform s = Child(root, "Section7_BubbleJumpFinale");
+
+            Material goldMat  = LoadFA("FA_GoldTrim");    if (goldMat  == null) goldMat  = p.Finish;
+            Material eMat     = LoadFA("FA_EmissiveCyan"); if (eMat     == null) eMat     = p.EmissiveCyan;
+            Material whiteMat = LoadFA("FA_GlossyWhite"); if (whiteMat == null) whiteMat = p.AeroBuilding;
+
+            Sign(s, "FinaleHint", "THE SUMMIT IS NEAR!\nJump through the Bubbles!", new Vector3(0f, 162f, 670f), Quaternion.identity, p);
+
+            // 11 bubble disc platforms ascending sharply
+            float[] bz = { 674f, 684f, 694f, 704f, 714f, 723f, 732f, 740f, 748f, 755f, 761f };
+            float[] by = { 160f, 170f, 181f, 193f, 206f, 219f, 232f, 244f, 255f, 263f, 270f };
+            float[] bx = {   0f,   4f,  -4f,   5f,  -5f,   3f,  -3f,   4f,  -2f,   1f,   0f };
+            float[] br = { 4.5f, 4.0f, 4.5f, 4.0f, 5.0f, 4.0f, 4.5f, 4.0f, 4.5f, 4.0f, 5.5f };
+
+            for (int i = 0; i < bz.Length; i++)
+            {
+                // Flat cylinder = bubble disc platform
+                GameObject bub = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+                bub.name = "BubblePlat " + (i + 1);
+                bub.transform.SetParent(s, false);
+                bub.transform.position   = new Vector3(bx[i], by[i], bz[i]);
+                bub.transform.localScale = new Vector3(br[i] * 2f, 0.6f, br[i] * 2f);
+
+                Material bm = (i % 3 == 0) ? p.BlueSolid : (i % 3 == 1 ? p.CyanSolid : p.Bubble);
+                AssignMat(bub, bm);
+
+                // Decorative translucent bubble sphere on top (visual only)
+                MakeSphere(bub.transform, "BubVis", new Vector3(0f, 1.5f, 0f), br[i] * 1.1f, p.Bubble, false);
+
+                // Emissive glow cylinder slightly larger than platform
+                GameObject glowCyl = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+                glowCyl.name = "BubGlow";
+                glowCyl.transform.SetParent(bub.transform, false);
+                glowCyl.transform.localPosition = new Vector3(0f, 0f, 0f);
+                glowCyl.transform.localScale    = new Vector3((br[i] * 2f + 0.6f) / (br[i] * 2f), 0.12f / 0.6f, (br[i] * 2f + 0.6f) / (br[i] * 2f));
+                AssignMat(glowCyl, eMat);
+                DestroyCollider(glowCyl);
+
+                SpawnPointLight(bub.transform, "BubLight", new Vector3(0f, 2f, 0f),
+                    new Color(0.15f + i * 0.08f, 0.8f, 1f), 1.3f, 20f);
+
+                if (i % 3 == 0)
+                    AddSeed(s, new Vector3(bx[i], by[i] + 3f, bz[i]), dir, p, ref seeds);
+            }
+
+            // ── FINISH PLATFORM ──
+            const float finishY = 272f;
+            const float finishZ = 764f;
+
+            Plat(s, "FinishPlatform", new Vector3(0f, finishY, finishZ), new Vector3(20f, 2f, 20f), whiteMat);
+
+            // Gold edge trim (BoxChild uses localPos relative to section at world 0,0,0)
+            BoxChild(s, "GoldN", new Vector3(  0f,      finishY + 1.2f, finishZ + 10.3f), new Vector3(20.6f, 0.4f, 0.4f), goldMat);
+            BoxChild(s, "GoldS", new Vector3(  0f,      finishY + 1.2f, finishZ - 10.3f), new Vector3(20.6f, 0.4f, 0.4f), goldMat);
+            BoxChild(s, "GoldE", new Vector3( 10.3f,    finishY + 1.2f, finishZ),         new Vector3(0.4f,  0.4f, 20.6f), goldMat);
+            BoxChild(s, "GoldW", new Vector3(-10.3f,    finishY + 1.2f, finishZ),         new Vector3(0.4f,  0.4f, 20.6f), goldMat);
+
+            SpawnPointLight(s, "FinishGold", new Vector3(  0f, finishY + 12f, finishZ), new Color(1f,   0.9f, 0.3f), 6f, 100f);
+            SpawnPointLight(s, "FinishCyan", new Vector3(  0f, finishY +  7f, finishZ), new Color(0f,   1f,   0.9f), 4f,  80f);
+            SpawnPointLight(s, "FinishLime", new Vector3(  0f, finishY +  4f, finishZ), new Color(0.5f, 1f,   0.3f), 3f,  60f);
+
+            // Firework particle bursts
+            float[] fwx = {-6f, 6f, -4f, 4f};
+            float[] fwzOff = {-6f, -5f, 6f, 5f};
+            for (int i = 0; i < 4; i++)
+            {
+                GameObject fw = new GameObject("Firework" + i);
+                fw.transform.SetParent(vfxRoot, false);
+                fw.transform.position = new Vector3(fwx[i], finishY + 5f, finishZ + fwzOff[i]);
+                ParticleSystem fps = fw.AddComponent<ParticleSystem>();
+                var fm = fps.main;
+                fm.startLifetime = 3f;
+                fm.startSpeed    = new ParticleSystem.MinMaxCurve(10f, 22f);
+                fm.startSize     = new ParticleSystem.MinMaxCurve(0.1f, 0.5f);
+                fm.startColor    = new ParticleSystem.MinMaxGradient(new Color(0f, 1f, 1f), new Color(0.8f, 1f, 0.2f));
+                fm.maxParticles  = 600;
+                var fpsEmit = fps.emission;
+                fpsEmit.rateOverTime = 0f;
+                fpsEmit.SetBursts(new[] { new ParticleSystem.Burst(0f, 600) });
+                var fsh = fps.shape; fsh.shapeType = ParticleSystemShapeType.Sphere; fsh.radius = 0.5f;
+                fps.Stop();
+            }
+
+            // Finish trigger
+            GameObject finTrig = new GameObject("FinishTrigger");
+            finTrig.transform.SetParent(s, false);
+            finTrig.transform.position = new Vector3(0f, finishY + 3f, finishZ);
+            BoxCollider ftc = finTrig.AddComponent<BoxCollider>();
+            ftc.isTrigger = true; ftc.size = new Vector3(20f, 6f, 20f);
+            finTrig.AddComponent<AeroFinishGate>();
+
+            Sign(s, "Victory", "YOU REACHED\nTHE SUMMIT!\nAeroBloom Complete!", new Vector3(0f, finishY + 5f, finishZ - 11f), Quaternion.identity, p);
+
+            Checkpoint(s, "Relay 07 Finale", new Vector3(0f, finishY + 1.2f, finishZ), Quaternion.identity, p, ref cps);
+            AddSeed(s, new Vector3( 4f, finishY + 3.5f, finishZ + 4f), dir, p, ref seeds);
+            AddSeed(s, new Vector3(-4f, finishY + 3.5f, finishZ - 4f), dir, p, ref seeds);
+        }
+
+        // ─────────────────────────────────────────────
+        // DISC TOWER HELPER
+        // Creates a thin shaft + wide flat disc on top. Returns the disc (the collideable platform).
+        // ─────────────────────────────────────────────
+        private static GameObject CreateDiscTower(Transform parent, string name,
+            Vector3 basePos, float shaftHeight, float discRadius, float discThick,
+            Material shaftMat, Material discMat)
+        {
+            GameObject tower = new GameObject(name);
+            tower.transform.SetParent(parent, false);
+            tower.transform.position = basePos;
+
+            // Shaft: Cylinder — localScale.y = halfHeight, localScale.x = diameter
+            GameObject shaft = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            shaft.name = "Shaft";
+            shaft.transform.SetParent(tower.transform, false);
+            shaft.transform.localPosition = new Vector3(0f, shaftHeight * 0.5f, 0f);
+            shaft.transform.localScale    = new Vector3(0.8f, shaftHeight * 0.5f, 0.8f);
+            AssignMat(shaft, shaftMat);
+            DestroyCollider(shaft);
+
+            // Disc: flat wide cylinder — the actual platform
+            GameObject disc = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            disc.name = "Disc";
+            disc.transform.SetParent(tower.transform, false);
+            disc.transform.localPosition = new Vector3(0f, shaftHeight, 0f);
+            disc.transform.localScale    = new Vector3(discRadius * 2f, discThick * 0.5f, discRadius * 2f);
+            AssignMat(disc, discMat);
+
+            return disc;
+        }
+
+        // ─────────────────────────────────────────────
+        // PLAYER CREATION
+        // ─────────────────────────────────────────────
+        private static AeroPlayerController CreatePlayer(Transform parent, Vector3 pos, Quaternion rot, AeroPackConfig pack)
+        {
+            GameObject go = new GameObject("Player_AeroRunner");
+            go.transform.SetParent(parent, false);
+            go.transform.SetPositionAndRotation(pos, rot);
+            go.tag = "Player";
+
+            CharacterController cc = go.AddComponent<CharacterController>();
+            cc.height = 1.8f; cc.radius = 0.35f;
+            cc.center = new Vector3(0f, 0.9f, 0f);
+            cc.stepOffset = 0.45f; cc.slopeLimit = 58f;
+
+            AeroPlayerController player = go.AddComponent<AeroPlayerController>();
+            player.fallRespawnY = -3f;
 
             if (pack != null && pack.msnBuddyPrefab != null)
             {
                 GameObject body = Object.Instantiate(pack.msnBuddyPrefab);
                 body.name = "MsnBuddy Body";
-                body.transform.SetParent(playerObject.transform, false);
+                body.transform.SetParent(go.transform, false);
                 body.transform.localPosition = Vector3.zero;
                 body.transform.localRotation = Quaternion.identity;
-                body.transform.localScale = Vector3.one;
+                body.transform.localScale    = Vector3.one;
                 DestroyCollidersRecursive(body);
 
                 Animator anim = body.GetComponent<Animator>();
-                if (anim == null)
-                    anim = body.AddComponent<Animator>();
+                if (anim == null) anim = body.AddComponent<Animator>();
                 if (pack.msnBuddyAnimator != null)
                     anim.runtimeAnimatorController = pack.msnBuddyAnimator;
 
                 player.bodyTransform = body.transform;
-                player.bodyAnimator = anim;
+                player.bodyAnimator  = anim;
             }
 
             if (pack != null && pack.footstepParticlesPrefab != null)
             {
-                GameObject particles = Object.Instantiate(pack.footstepParticlesPrefab);
-                particles.name = "Footstep Particles";
-                particles.transform.SetParent(playerObject.transform, false);
-                particles.transform.localPosition = Vector3.zero;
+                GameObject fp = Object.Instantiate(pack.footstepParticlesPrefab);
+                fp.name = "Footstep FX";
+                fp.transform.SetParent(go.transform, false);
+                fp.transform.localPosition = Vector3.zero;
             }
 
             return player;
         }
 
-        private static void BuildCourse(Transform root, AeroLevelDirector director, Palette palette, AeroPackConfig pack, out int seedCount, out int checkpointCount)
+        // ─────────────────────────────────────────────
+        // PLATFORM / SCENE HELPERS
+        // ─────────────────────────────────────────────
+        private static GameObject Plat(Transform parent, string name, Vector3 pos, Vector3 scale, Material mat)
+            => Plat(parent, name, pos, scale, Quaternion.identity, mat);
+
+        private static GameObject Plat(Transform parent, string name, Vector3 pos, Vector3 scale, Quaternion rot, Material mat)
         {
-            seedCount = 0;
-            checkpointCount = 0;
-
-            CreatePlatform(root, "Start Aqua Island", new Vector3(0f, 0f, 0f), new Vector3(11f, 0.7f, 11f), Quaternion.identity, palette.WhiteGlass);
-            CreatePlatform(root, "Login Step 01", new Vector3(0f, 0.45f, 10f), new Vector3(5.5f, 0.5f, 5f), Quaternion.identity, palette.Glass);
-            CreatePlatform(root, "Login Step 02", new Vector3(4f, 1.15f, 20f), new Vector3(5.2f, 0.5f, 5f), Quaternion.Euler(0f, 7f, 0f), palette.Glass);
-            CreatePlatform(root, "Login Step 03", new Vector3(-2.2f, 1.95f, 31f), new Vector3(5.2f, 0.5f, 5f), Quaternion.Euler(0f, -10f, 0f), palette.Glass);
-            CreatePlatform(root, "Spring Dock", new Vector3(3f, 2.85f, 42f), new Vector3(6.3f, 0.55f, 6f), Quaternion.identity, palette.LimeGlass);
-
-            CreateCheckpoint(root, "Relay 01 Login", new Vector3(0f, 0.42f, 2.8f), Quaternion.identity, palette, ref checkpointCount);
-            AddSeed(root, new Vector3(0f, 1.6f, 10f), director, palette, ref seedCount);
-            AddSeed(root, new Vector3(4f, 2.3f, 20f), director, palette, ref seedCount);
-            AddSeed(root, new Vector3(-2.2f, 3.1f, 31f), director, palette, ref seedCount);
-            AddSeed(root, new Vector3(3f, 4.1f, 42f), director, palette, ref seedCount);
-
-            CreateBouncePad(root, "Bubble Spring", new Vector3(3f, 3.45f, 43f), Quaternion.identity, palette, new Vector3(0f, 19f, 22f));
-            CreatePlatform(root, "Cloud Cache Landing", new Vector3(3f, 7.25f, 60f), new Vector3(8f, 0.55f, 7f), Quaternion.identity, palette.WhiteGlass);
-            CreateSpeedGate(root, "Aero Stream 01", new Vector3(3f, 8.5f, 65.3f), Quaternion.identity, palette, new Vector3(0f, 1f, 16f));
-            CreatePlatform(root, "Relay Shelf", new Vector3(3f, 7.15f, 72f), new Vector3(6.5f, 0.5f, 5f), Quaternion.identity, palette.Glass);
-            CreateCheckpoint(root, "Relay 02 Bubble Cache", new Vector3(3f, 7.55f, 61.5f), Quaternion.identity, palette, ref checkpointCount);
-            AddSeed(root, new Vector3(3f, 8.5f, 60f), director, palette, ref seedCount);
-            AddSeed(root, new Vector3(3f, 8.35f, 72f), director, palette, ref seedCount);
-
-            GameObject mover = CreatePlatform(root, "Glass Sync Platform", new Vector3(3f, 7.5f, 84f), new Vector3(6.2f, 0.45f, 5.2f), Quaternion.identity, palette.CyanGlass);
-            AeroMovingPlatform movingPlatform = mover.AddComponent<AeroMovingPlatform>();
-            movingPlatform.localOffset = new Vector3(10f, 0f, 0f);
-            movingPlatform.period = 4.6f;
-
-            CreatePlatform(root, "Moving Platform Receiver", new Vector3(13f, 7.7f, 96f), new Vector3(8f, 0.55f, 7f), Quaternion.identity, palette.WhiteGlass);
-            CreateCheckpoint(root, "Relay 03 Sync Bridge", new Vector3(13f, 8.08f, 97.3f), Quaternion.identity, palette, ref checkpointCount);
-            AddSeed(root, new Vector3(8f, 9.2f, 84f), director, palette, ref seedCount);
-            AddSeed(root, new Vector3(13f, 9.1f, 96f), director, palette, ref seedCount);
-
-            CreatePlatform(root, "Wallrun Entry", new Vector3(13f, 8.05f, 104f), new Vector3(7f, 0.5f, 6f), Quaternion.identity, palette.Glass);
-            CreateWall(root, "Left Glass Wallrun Wall", new Vector3(10.4f, 11f, 113f), new Vector3(0.45f, 5.8f, 22f), palette.WallGlass);
-            CreateWall(root, "Right Glass Wallrun Wall", new Vector3(15.6f, 11f, 113f), new Vector3(0.45f, 5.8f, 22f), palette.WallGlass);
-            CreateSpeedGate(root, "Wallrun Aero Stream", new Vector3(13f, 9.55f, 107f), Quaternion.identity, palette, new Vector3(0f, 0.5f, 12f));
-            CreatePlatform(root, "Wallrun Exit", new Vector3(13f, 8.45f, 122f), new Vector3(8f, 0.55f, 7f), Quaternion.identity, palette.LimeGlass);
-            CreateCheckpoint(root, "Relay 04 Glass Run", new Vector3(13f, 8.82f, 123.5f), Quaternion.identity, palette, ref checkpointCount);
-            AddSeed(root, new Vector3(13f, 10.2f, 108f), director, palette, ref seedCount);
-            AddSeed(root, new Vector3(13f, 10.3f, 115f), director, palette, ref seedCount);
-            AddSeed(root, new Vector3(13f, 9.85f, 122f), director, palette, ref seedCount);
-
-            for (int i = 0; i < 8; i++)
-            {
-                float angle = i * 0.82f;
-                Vector3 position = new Vector3(13f + Mathf.Sin(angle) * 6.5f, 9.1f + i * 0.82f, 132f + i * 7f);
-                Quaternion rotation = Quaternion.Euler(0f, Mathf.Sin(angle) * 18f, 0f);
-                Material material = i % 2 == 0 ? palette.WhiteGlass : palette.CyanGlass;
-                CreatePlatform(root, "Sky Garden Step " + (i + 1), position, new Vector3(5.5f, 0.45f, 4.8f), rotation, material);
-                AddSeed(root, position + Vector3.up * 1.25f, director, palette, ref seedCount);
-
-                if (i == 3)
-                {
-                    CreateSpeedGate(root, "Aero Stream Spiral", position + new Vector3(0f, 1.3f, 2.2f), rotation, palette, new Vector3(0f, 0.8f, 13f));
-                }
-            }
-
-            CreatePlatform(root, "Final Sky Garden", new Vector3(13f, 16.4f, 190f), new Vector3(13f, 0.8f, 13f), Quaternion.identity, palette.LimeGlass);
-            CreateCheckpoint(root, "Relay 05 Sky Garden", new Vector3(13f, 16.9f, 186f), Quaternion.identity, palette, ref checkpointCount);
-            AddSeed(root, new Vector3(9f, 18.4f, 190f), director, palette, ref seedCount);
-            AddSeed(root, new Vector3(13f, 18.8f, 190f), director, palette, ref seedCount);
-            AddSeed(root, new Vector3(17f, 18.4f, 190f), director, palette, ref seedCount);
-            CreateFinishGate(root, "Bloom Portal", new Vector3(13f, 17.1f, 196f), Quaternion.identity, palette);
-
-            CreateSign(root, "Opening Pitch Sign", "AEROBLOOM\nrestore the glossy sky-garden network", new Vector3(-4.6f, 1.1f, 3f), Quaternion.Euler(0f, 25f, 0f), palette);
-            CreateSign(root, "Wallrun Sign", "hold SHIFT near glass walls\njump to burst away", new Vector3(17.4f, 10.2f, 105f), Quaternion.Euler(0f, -35f, 0f), palette);
-            CreateSign(root, "Final Sign", "all relays synced\nenter the bloom portal", new Vector3(7.2f, 18.1f, 191f), Quaternion.Euler(0f, 45f, 0f), palette);
-
-            CreateDecor(root, palette, pack);
+            GameObject go = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            go.name = name;
+            go.transform.SetParent(parent, false);
+            go.transform.SetPositionAndRotation(pos, rot);
+            go.transform.localScale = scale;
+            AssignMat(go, mat);
+            return go;
         }
 
-        private static void SetupEnvironment(Transform root, Palette palette, AeroPackConfig pack = null)
+        private static void BoxNoColl(Transform parent, string name, Vector3 pos, Vector3 scale, Material mat)
         {
-            RenderSettings.fog = true;
-            RenderSettings.fogColor = new Color(0.65f, 0.92f, 1f);
-            RenderSettings.fogMode = FogMode.ExponentialSquared;
-            RenderSettings.fogDensity = 0.004f;
-            // Flat ambient keeps buildings bright regardless of skybox sampling
-            RenderSettings.ambientMode = AmbientMode.Flat;
-            RenderSettings.ambientLight = new Color(0.88f, 0.97f, 1f);
-
-            // Always use clean procedural gradient sky — the pack skybox has realistic clouds
-            // that break the Frutiger Aero aesthetic. Procedural gives the signature clean blue.
-            Shader skyShader = Shader.Find("Skybox/Procedural");
-            if (skyShader != null)
-            {
-                Material sky = new Material(skyShader);
-                sky.SetColor("_SkyTint", new Color(0.48f, 0.76f, 1f));
-                sky.SetColor("_GroundColor", new Color(0.44f, 0.82f, 0.54f));
-                sky.SetFloat("_AtmosphereThickness", 0.82f);
-                sky.SetFloat("_Exposure", 1.42f);
-                sky.SetFloat("_SunDisk", 1);
-                sky.SetFloat("_SunSize", 0.024f);
-                RenderSettings.skybox = sky;
-            }
-
-            GameObject sunObject = new GameObject("Aero Sun");
-            sunObject.transform.SetParent(root, false);
-            sunObject.transform.rotation = Quaternion.Euler(52f, -36f, 0f);
-            Light sun = sunObject.AddComponent<Light>();
-            sun.type = LightType.Directional;
-            sun.intensity = 1.42f;
-            sun.color = new Color(1f, 0.98f, 0.92f);
-            sun.shadows = LightShadows.Soft;
-
-            // Own post-processing profile — pack profile is often tuned for a different mood.
-            // Frutiger Aero needs: strong bloom glow, vivid saturation, slight blue-white cast.
-            GameObject volumeObject = new GameObject("Aero Post Process");
-            volumeObject.transform.SetParent(root, false);
-            Volume volume = volumeObject.AddComponent<Volume>();
-            volume.isGlobal = true;
-            volume.priority = 2f;
-
-            VolumeProfile profile = ScriptableObject.CreateInstance<VolumeProfile>();
-            volume.sharedProfile = profile;
-
-            Bloom bloom = profile.Add<Bloom>(true);
-            bloom.threshold.Override(0.52f);
-            bloom.intensity.Override(0.82f);
-            bloom.scatter.Override(0.72f);
-
-            ColorAdjustments colorAdj = profile.Add<ColorAdjustments>(true);
-            colorAdj.saturation.Override(34f);
-            colorAdj.contrast.Override(12f);
-            colorAdj.colorFilter.Override(new Color(0.94f, 0.99f, 1f));
-
-            Vignette vignette = profile.Add<Vignette>(true);
-            vignette.intensity.Override(0.08f);
-            vignette.smoothness.Override(0.45f);
-
-            // Reflective water plane at the base
-            GameObject water = GameObject.CreatePrimitive(PrimitiveType.Plane);
-            water.name = "Reflective Water Layer";
-            water.transform.SetParent(root, false);
-            water.transform.position = new Vector3(6f, -2.6f, 95f);
-            water.transform.localScale = new Vector3(50f, 1f, 50f);
-            AssignMaterial(water, palette.Water);
-            DestroyCollider(water);
-
-            // Soft green ground layer below the water
-            GameObject gardenBase = GameObject.CreatePrimitive(PrimitiveType.Plane);
-            gardenBase.name = "Soft Green Reflection Field";
-            gardenBase.transform.SetParent(root, false);
-            gardenBase.transform.position = new Vector3(6f, -2.75f, 95f);
-            gardenBase.transform.localScale = new Vector3(40f, 1f, 40f);
-            AssignMaterial(gardenBase, palette.Grass);
-            DestroyCollider(gardenBase);
+            var go = Plat(parent, name, pos, scale, Quaternion.identity, mat);
+            DestroyCollider(go);
         }
 
-        private static void CreateDecor(Transform root, Palette palette, AeroPackConfig pack = null)
+        private static GameObject MakeSphere(Transform parent, string name, Vector3 pos, float radius, Material mat, bool keepCol)
         {
-            for (int i = 0; i < 22; i++)
-            {
-                float t = i / 21f;
-                float x = Mathf.Sin(i * 2.17f) * 32f + (i % 3) * 9f - 8f;
-                float z = Mathf.Lerp(6f, 190f, t) + Mathf.Sin(i) * 6f;
-                float y = 3f + Mathf.Sin(i * 1.7f) * 2.3f + (i % 5) * 0.4f;
-                float scale = 0.8f + (i % 4) * 0.35f;
-                GameObject bubble = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-                bubble.name = "Floating Aero Bubble " + (i + 1);
-                bubble.transform.SetParent(root, false);
-                bubble.transform.position = new Vector3(x, y, z);
-                bubble.transform.localScale = Vector3.one * scale;
-                AssignMaterial(bubble, palette.Bubble);
-                DestroyCollider(bubble);
-                AeroOrbitProp orbit = bubble.AddComponent<AeroOrbitProp>();
-                orbit.degreesPerSecond = 8f + i;
-                orbit.bobHeight = 0.18f + (i % 3) * 0.08f;
-            }
-
-            bool hasBuildings = pack != null && (pack.basicBuildingPrefab != null || pack.towerBuildingPrefab != null);
-            for (int i = 0; i < 12; i++)
-            {
-                float side = i % 2 == 0 ? -1f : 1f;
-                float z = 18f + i * 14f;
-                float height = 8f + (i % 4) * 4f;
-                Vector3 pos = new Vector3(side * (23f + i % 3 * 5f), height * 0.5f - 1.5f, z);
-                Quaternion rot = Quaternion.Euler(0f, i * 11f, 0f);
-
-                if (hasBuildings)
-                {
-                    GameObject prefab = (i % 3 == 0 && pack.towerBuildingPrefab != null)
-                        ? pack.towerBuildingPrefab
-                        : pack.basicBuildingPrefab;
-                    if (prefab != null)
-                    {
-                        GameObject building = Object.Instantiate(prefab);
-                        building.name = "Distant Building " + (i + 1);
-                        building.transform.SetParent(root, false);
-                        float bx = side * (42f + i % 3 * 10f);
-                        float bz = 15f + i * 14f;
-                        building.transform.position = new Vector3(bx, -2f, bz);
-                        building.transform.rotation = Quaternion.Euler(0f, i * 30f, 0f);
-                        building.transform.localScale = Vector3.one;
-                        DestroyCollidersRecursive(building);
-                        ApplyBuildingMaterials(building, palette);
-                    }
-                }
-                else
-                {
-                    GameObject tower = CreatePlatform(root, "Distant Glass Tower " + (i + 1), pos, new Vector3(4f + (i % 3), height, 4f + (i % 2)), rot, palette.DistantGlass);
-                    DestroyCollider(tower);
-                }
-            }
-
-            if (pack != null && pack.earthPrefab != null)
-            {
-                GameObject globe = Object.Instantiate(pack.earthPrefab);
-                globe.name = "Aero Earth Globe";
-                globe.transform.SetParent(root, false);
-                globe.transform.position = new Vector3(-18f, 10f, 73f);
-                globe.transform.localScale = Vector3.one * 5.2f;
-                DestroyCollidersRecursive(globe);
-                AeroOrbitProp globeOrbit = globe.AddComponent<AeroOrbitProp>();
-                globeOrbit.axis = new Vector3(0.2f, 1f, 0.1f);
-                globeOrbit.degreesPerSecond = 9f;
-                globeOrbit.bobHeight = 0.35f;
-            }
-            else
-            {
-                GameObject globe = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-                globe.name = "Aero Earth Globe";
-                globe.transform.SetParent(root, false);
-                globe.transform.position = new Vector3(-18f, 10f, 73f);
-                globe.transform.localScale = Vector3.one * 5.2f;
-                AssignMaterial(globe, palette.GlobeBlue);
-                DestroyCollider(globe);
-                AeroOrbitProp globeOrbit = globe.AddComponent<AeroOrbitProp>();
-                globeOrbit.axis = new Vector3(0.2f, 1f, 0.1f);
-                globeOrbit.degreesPerSecond = 9f;
-                globeOrbit.bobHeight = 0.35f;
-
-                CreatePlatform(root, "Globe Landmass A", new Vector3(-18.8f, 11.2f, 70.2f), new Vector3(3.8f, 0.12f, 1.4f), Quaternion.Euler(18f, 28f, -12f), palette.LimeSolid);
-                CreatePlatform(root, "Globe Landmass B", new Vector3(-15.8f, 9.4f, 75.2f), new Vector3(2.6f, 0.12f, 1.6f), Quaternion.Euler(-18f, -35f, 18f), palette.LimeSolid);
-            }
+            GameObject go = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            go.name = name;
+            go.transform.SetParent(parent, false);
+            go.transform.position   = pos;
+            go.transform.localScale = Vector3.one * radius;
+            AssignMat(go, mat);
+            if (!keepCol) DestroyCollider(go);
+            return go;
         }
 
-        private static GameObject CreatePlatform(Transform parent, string name, Vector3 position, Vector3 scale, Quaternion rotation, Material material)
+        private static void BoxChild(Transform parent, string name, Vector3 localPos, Vector3 localScale, Material mat)
         {
-            GameObject platform = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            platform.name = name;
-            platform.transform.SetParent(parent, false);
-            platform.transform.SetPositionAndRotation(position, rotation);
-            platform.transform.localScale = scale;
-            AssignMaterial(platform, material);
-            return platform;
+            GameObject go = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            go.name = name;
+            go.transform.SetParent(parent, false);
+            go.transform.localPosition = localPos;
+            go.transform.localRotation = Quaternion.identity;
+            go.transform.localScale    = localScale;
+            AssignMat(go, mat);
+            DestroyCollider(go);
         }
 
-        private static void CreateWall(Transform parent, string name, Vector3 position, Vector3 scale, Material material)
+        private static void Checkpoint(Transform root, string name, Vector3 pos, Quaternion rot, Palette p, ref int count)
         {
-            GameObject wall = CreatePlatform(parent, name, position, scale, Quaternion.identity, material);
-            wall.AddComponent<AeroOrbitProp>().bobHeight = 0f;
+            count++;
+            GameObject cp = new GameObject(name);
+            cp.transform.SetParent(root, false);
+            cp.transform.SetPositionAndRotation(pos, rot);
+
+            BoxCollider col = cp.AddComponent<BoxCollider>();
+            col.isTrigger = true; col.center = new Vector3(0f, 1.45f, 0f); col.size = new Vector3(6.4f, 2.9f, 0.9f);
+
+            Transform respawn = new GameObject("Respawn").transform;
+            respawn.SetParent(cp.transform, false);
+            respawn.localPosition = new Vector3(0f, 0.22f, -2.7f);
+
+            BoxChild(cp.transform, "PillarL", new Vector3(-3f, 1.35f, 0f), new Vector3(0.28f, 2.7f, 0.28f), p.RelayInactive);
+            BoxChild(cp.transform, "PillarR", new Vector3( 3f, 1.35f, 0f), new Vector3(0.28f, 2.7f, 0.28f), p.RelayInactive);
+            BoxChild(cp.transform, "Bridge",  new Vector3( 0f, 2.70f, 0f), new Vector3(6.3f,  0.28f, 0.28f), p.RelayInactive);
+
+            AeroCheckpoint ac = cp.AddComponent<AeroCheckpoint>();
+            ac.checkpointName   = name;
+            ac.respawnPoint     = respawn;
+            ac.inactiveMaterial = p.RelayInactive;
+            ac.activeMaterial   = p.RelayActive;
         }
 
-        private static void AddSeed(Transform root, Vector3 position, AeroLevelDirector director, Palette palette, ref int seedCount)
+        private static void AddSeed(Transform root, Vector3 worldPos, AeroLevelDirector dir, Palette p, ref int count)
         {
-            seedCount++;
+            count++;
             GameObject seed = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-            seed.name = "Aero Seed " + seedCount;
+            seed.name = "AeroSeed " + count;
             seed.transform.SetParent(root, false);
-            seed.transform.position = position;
+            seed.transform.position   = worldPos;
             seed.transform.localScale = Vector3.one * 0.72f;
-            AssignMaterial(seed, palette.Seed);
+            AssignMat(seed, p.Seed);
 
-            AeroCollectible collectible = seed.AddComponent<AeroCollectible>();
-            collectible.director = director;
+            AeroCollectible col = seed.AddComponent<AeroCollectible>();
+            col.director = dir;
 
-            Light light = seed.AddComponent<Light>();
-            light.type = LightType.Point;
-            light.range = 4f;
-            light.intensity = 0.8f;
-            light.color = new Color(0.68f, 1f, 0.9f);
+            Light lt = seed.AddComponent<Light>();
+            lt.type = LightType.Point; lt.range = 4f;
+            lt.intensity = 0.8f; lt.color = new Color(0.68f, 1f, 0.9f);
         }
 
-        private static void CreateBouncePad(Transform root, string name, Vector3 position, Quaternion rotation, Palette palette, Vector3 localLaunchVelocity)
+        private static void Sign(Transform root, string name, string text, Vector3 pos, Quaternion rot, Palette p)
+        {
+            var back = Plat(root, name + "_Back", pos, new Vector3(5f, 1.8f, 0.1f), rot, p.SignBack);
+            DestroyCollider(back);
+
+            GameObject tGO = new GameObject(name + "_Text");
+            tGO.transform.SetParent(root, false);
+            tGO.transform.SetPositionAndRotation(
+                pos + rot * new Vector3(0f, 0f, -0.07f),
+                rot);
+            TextMesh tm = tGO.AddComponent<TextMesh>();
+            tm.text = text; tm.anchor = TextAnchor.MiddleCenter;
+            tm.alignment = TextAlignment.Center;
+            tm.characterSize = 0.09f; tm.fontSize = 46;
+            tm.color = new Color(0.03f, 0.22f, 0.34f);
+        }
+
+        private static void SpeedGate(Transform root, string name, Vector3 pos, Quaternion rot, Palette p, Vector3 impulse)
+        {
+            GameObject gate = new GameObject(name);
+            gate.transform.SetParent(root, false);
+            gate.transform.SetPositionAndRotation(pos, rot);
+            BoxCollider bc = gate.AddComponent<BoxCollider>();
+            bc.isTrigger = true; bc.center = new Vector3(0f, 1.2f, 0f); bc.size = new Vector3(5f, 2.4f, 0.8f);
+            gate.AddComponent<AeroSpeedGate>().localImpulse = impulse;
+            BoxChild(gate.transform, "L", new Vector3(-2.3f, 1.2f, 0), new Vector3(0.15f, 2.4f, 0.15f), p.CyanSolid);
+            BoxChild(gate.transform, "R", new Vector3( 2.3f, 1.2f, 0), new Vector3(0.15f, 2.4f, 0.15f), p.CyanSolid);
+            BoxChild(gate.transform, "T", new Vector3( 0f,   2.3f, 0), new Vector3(4.8f,  0.15f, 0.15f), p.CyanSolid);
+        }
+
+        private static void BounceAt(Transform root, string name, Vector3 pos, Palette p, Vector3 launch)
         {
             GameObject pad = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
             pad.name = name;
             pad.transform.SetParent(root, false);
-            pad.transform.SetPositionAndRotation(position, rotation);
-            pad.transform.localScale = new Vector3(1.65f, 0.08f, 1.65f);
-            AssignMaterial(pad, palette.Pad);
-            AeroBouncer bouncer = pad.AddComponent<AeroBouncer>();
-            bouncer.localLaunchVelocity = localLaunchVelocity;
+            pad.transform.position   = pos;
+            pad.transform.localScale = new Vector3(1.6f, 0.08f, 1.6f);
+            AssignMat(pad, p.Pad);
+            pad.AddComponent<AeroBouncer>().localLaunchVelocity = launch;
         }
 
-        private static void CreateSpeedGate(Transform root, string name, Vector3 position, Quaternion rotation, Palette palette, Vector3 localImpulse)
+        private static void SpawnPointLight(Transform parent, string name, Vector3 pos, Color color, float intensity, float range)
         {
-            GameObject gate = new GameObject(name);
-            gate.transform.SetParent(root, false);
-            gate.transform.SetPositionAndRotation(position, rotation);
-
-            BoxCollider collider = gate.AddComponent<BoxCollider>();
-            collider.isTrigger = true;
-            collider.center = new Vector3(0f, 1.2f, 0f);
-            collider.size = new Vector3(5.4f, 2.4f, 0.8f);
-
-            AeroSpeedGate speedGate = gate.AddComponent<AeroSpeedGate>();
-            speedGate.localImpulse = localImpulse;
-
-            CreateChildCube(gate.transform, "Left Rail", new Vector3(-2.5f, 1.2f, 0f), new Vector3(0.18f, 2.4f, 0.18f), palette.CyanSolid);
-            CreateChildCube(gate.transform, "Right Rail", new Vector3(2.5f, 1.2f, 0f), new Vector3(0.18f, 2.4f, 0.18f), palette.CyanSolid);
-            CreateChildCube(gate.transform, "Top Rail", new Vector3(0f, 2.35f, 0f), new Vector3(5.2f, 0.18f, 0.18f), palette.CyanSolid);
-            CreateChildCube(gate.transform, "Bottom Rail", new Vector3(0f, 0.08f, 0f), new Vector3(5.2f, 0.16f, 0.16f), palette.CyanSolid);
+            GameObject go = new GameObject(name);
+            go.transform.SetParent(parent, false);
+            go.transform.localPosition = pos;
+            Light l = go.AddComponent<Light>();
+            l.type = LightType.Point; l.color = color;
+            l.intensity = intensity; l.range = range;
+            l.shadows = LightShadows.None;
         }
 
-        private static void CreateCheckpoint(Transform root, string name, Vector3 position, Quaternion rotation, Palette palette, ref int checkpointCount)
+        private static Transform Child(Transform parent, string name)
         {
-            checkpointCount++;
-            GameObject checkpoint = new GameObject(name);
-            checkpoint.transform.SetParent(root, false);
-            checkpoint.transform.SetPositionAndRotation(position, rotation);
-
-            BoxCollider collider = checkpoint.AddComponent<BoxCollider>();
-            collider.isTrigger = true;
-            collider.center = new Vector3(0f, 1.45f, 0f);
-            collider.size = new Vector3(6.4f, 2.9f, 0.9f);
-
-            Transform respawn = new GameObject("Respawn Point").transform;
-            respawn.SetParent(checkpoint.transform, false);
-            respawn.localPosition = new Vector3(0f, 0.22f, -2.7f);
-            respawn.localRotation = Quaternion.identity;
-
-            CreateChildCube(checkpoint.transform, "Left Pillar", new Vector3(-3f, 1.35f, 0f), new Vector3(0.28f, 2.7f, 0.28f), palette.RelayInactive);
-            CreateChildCube(checkpoint.transform, "Right Pillar", new Vector3(3f, 1.35f, 0f), new Vector3(0.28f, 2.7f, 0.28f), palette.RelayInactive);
-            CreateChildCube(checkpoint.transform, "Top Bridge", new Vector3(0f, 2.7f, 0f), new Vector3(6.3f, 0.28f, 0.28f), palette.RelayInactive);
-
-            AeroCheckpoint checkpointComponent = checkpoint.AddComponent<AeroCheckpoint>();
-            checkpointComponent.checkpointName = name;
-            checkpointComponent.respawnPoint = respawn;
-            checkpointComponent.inactiveMaterial = palette.RelayInactive;
-            checkpointComponent.activeMaterial = palette.RelayActive;
+            GameObject go = new GameObject(name);
+            go.transform.SetParent(parent, false);
+            return go.transform;
         }
 
-        private static void CreateFinishGate(Transform root, string name, Vector3 position, Quaternion rotation, Palette palette)
+        private static Material LoadFA(string name)
         {
-            GameObject gate = new GameObject(name);
-            gate.transform.SetParent(root, false);
-            gate.transform.SetPositionAndRotation(position, rotation);
-
-            BoxCollider collider = gate.AddComponent<BoxCollider>();
-            collider.isTrigger = true;
-            collider.center = new Vector3(0f, 1.8f, 0f);
-            collider.size = new Vector3(7.2f, 3.6f, 1f);
-
-            gate.AddComponent<AeroFinishGate>();
-            CreateChildCube(gate.transform, "Bloom Left", new Vector3(-3.3f, 1.6f, 0f), new Vector3(0.34f, 3.2f, 0.34f), palette.Finish);
-            CreateChildCube(gate.transform, "Bloom Right", new Vector3(3.3f, 1.6f, 0f), new Vector3(0.34f, 3.2f, 0.34f), palette.Finish);
-            CreateChildCube(gate.transform, "Bloom Top", new Vector3(0f, 3.2f, 0f), new Vector3(6.9f, 0.34f, 0.34f), palette.Finish);
-
-            Light light = gate.AddComponent<Light>();
-            light.type = LightType.Point;
-            light.range = 12f;
-            light.intensity = 2.2f;
-            light.color = new Color(0.65f, 1f, 0.82f);
+            Material m = Resources.Load<Material>("Materials/" + name);
+            return m != null ? m : null;
         }
 
-        private static void CreateSign(Transform root, string name, string text, Vector3 position, Quaternion rotation, Palette palette)
+        private static void AssignMat(GameObject go, Material mat)
         {
-            GameObject signBack = CreatePlatform(root, name + " Back", position, new Vector3(5.8f, 2.4f, 0.12f), rotation, palette.SignBack);
-            DestroyCollider(signBack);
-
-            GameObject textObject = new GameObject(name);
-            textObject.transform.SetParent(root, false);
-            // TextMesh local +Z is the visible face; Euler(0,180,0) makes it face world -Z toward player
-            textObject.transform.SetPositionAndRotation(
-                position + rotation * new Vector3(0f, 0f, -0.09f),
-                Quaternion.Euler(0f, 180f, 0f));
-            TextMesh textMesh = textObject.AddComponent<TextMesh>();
-            textMesh.text = text;
-            textMesh.anchor = TextAnchor.MiddleCenter;
-            textMesh.alignment = TextAlignment.Center;
-            textMesh.characterSize = 0.22f;
-            textMesh.fontSize = 72;
-            textMesh.color = new Color(0.03f, 0.24f, 0.34f, 0.96f);
+            if (mat == null) return;
+            Renderer r = go.GetComponent<Renderer>();
+            if (r != null) r.sharedMaterial = mat;
         }
 
-        private static GameObject CreateChildCube(Transform parent, string name, Vector3 localPosition, Vector3 localScale, Material material)
-        {
-            GameObject cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            cube.name = name;
-            cube.transform.SetParent(parent, false);
-            cube.transform.localPosition = localPosition;
-            cube.transform.localRotation = Quaternion.identity;
-            cube.transform.localScale = localScale;
-            AssignMaterial(cube, material);
-            DestroyCollider(cube);
-            return cube;
-        }
+        private static float RF(System.Random r, float range) => (float)(r.NextDouble() * range);
 
-        private static void AssignMaterial(GameObject target, Material material)
+        private static void ApplyBuildingMaterials(GameObject building, Palette p)
         {
-            Renderer renderer = target.GetComponent<Renderer>();
-            if (renderer != null)
-            {
-                renderer.sharedMaterial = material;
-            }
-        }
-
-        private static void DestroyCollider(GameObject target)
-        {
-            Collider collider = target.GetComponent<Collider>();
-            if (collider != null)
-            {
-                DestroySmart(collider);
-            }
-        }
-
-        private static void ApplyBuildingMaterials(GameObject building, Palette palette)
-        {
+            Material faBody = LoadFA("FA_GlossyWhite");
+            Material faWin  = LoadFA("FA_BuildingWall");
+            Material bodyMat = faBody != null ? faBody : p.AeroBuilding;
+            Material winMat  = faWin  != null ? faWin  : p.AeroBuildingWindow;
             foreach (Renderer r in building.GetComponentsInChildren<Renderer>())
             {
-                int count = r.sharedMaterials.Length;
-                Material[] mats = new Material[count];
-                for (int i = 0; i < count; i++)
-                {
-                    mats[i] = (i == 0) ? palette.AeroBuilding : palette.AeroBuildingWindow;
-                }
+                int c = r.sharedMaterials.Length;
+                Material[] mats = new Material[c];
+                for (int i = 0; i < c; i++) mats[i] = (i == 0) ? bodyMat : winMat;
                 r.sharedMaterials = mats;
             }
         }
 
-        private static void DestroyCollidersRecursive(GameObject target)
-        {
-            foreach (Collider col in target.GetComponentsInChildren<Collider>())
-            {
-                DestroySmart(col);
-            }
-        }
-
+        // ─────────────────────────────────────────────
+        // SCENE CLEANUP
+        // ─────────────────────────────────────────────
         private static void RemoveTemplateSceneObjects(Transform newRoot)
         {
-            RemoveDefaultCameras(newRoot);
-            DestroySceneObjectByName("Directional Light", newRoot);
-            DestroySceneObjectByName("Global Volume", newRoot);
-            DestroySceneObjectByName("Terrain", newRoot);
+            foreach (Camera cam in Object.FindObjectsByType<Camera>(FindObjectsSortMode.None))
+                if (!cam.transform.IsChildOf(newRoot)) DestroySmart(cam.gameObject);
+            foreach (string n in new[] { "Directional Light", "Global Volume", "Terrain" })
+            {
+                GameObject t = GameObject.Find(n);
+                if (t != null && !t.transform.IsChildOf(newRoot)) DestroySmart(t);
+            }
         }
 
-        private static void RemoveDefaultCameras(Transform newRoot)
+        private static void DestroyNamedRoot(string n)
         {
-            Camera[] cameras = Object.FindObjectsByType<Camera>(FindObjectsSortMode.None);
-            for (int i = 0; i < cameras.Length; i++)
-            {
-                if (cameras[i] != null && !cameras[i].transform.IsChildOf(newRoot))
-                {
-                    DestroySmart(cameras[i].gameObject);
-                }
-            }
+            GameObject go = GameObject.Find(n);
+            if (go != null) DestroySmart(go);
         }
 
-        private static void DestroySceneObjectByName(string objectName, Transform newRoot)
+        private static void DestroyCollider(GameObject go)
         {
-            GameObject target = GameObject.Find(objectName);
-            if (target != null && !target.transform.IsChildOf(newRoot))
-            {
-                DestroySmart(target);
-            }
+            Collider c = go.GetComponent<Collider>();
+            if (c != null) DestroySmart(c);
         }
 
-        private static void DestroyNamedRoot(string rootName)
+        private static void DestroyCollidersRecursive(GameObject go)
         {
-            GameObject existing = GameObject.Find(rootName);
-            if (existing != null)
-            {
-                DestroySmart(existing);
-            }
+            foreach (Collider c in go.GetComponentsInChildren<Collider>())
+                DestroySmart(c);
         }
 
-        private static void DestroySmart(Object target)
+        private static void DestroySmart(Object o)
         {
-            if (target == null)
-            {
-                return;
-            }
-
-            if (Application.isPlaying)
-            {
-                Object.Destroy(target);
-            }
-            else
-            {
-                Object.DestroyImmediate(target);
-            }
+            if (o == null) return;
+            if (Application.isPlaying) Object.Destroy(o);
+            else Object.DestroyImmediate(o);
         }
 
+        // ─────────────────────────────────────────────
+        // PALETTE
+        // ─────────────────────────────────────────────
         private sealed class Palette
         {
-            public Material Glass;
-            public Material WhiteGlass;
-            public Material CyanGlass;
-            public Material LimeGlass;
-            public Material WallGlass;
-            public Material DistantGlass;
-            public Material Water;
-            public Material Grass;
-            public Material Seed;
-            public Material Pad;
-            public Material RelayInactive;
-            public Material RelayActive;
-            public Material Finish;
-            public Material CyanSolid;
-            public Material LimeSolid;
-            public Material GlobeBlue;
-            public Material Bubble;
-            public Material SignBack;
-            public Material AeroBuilding;
-            public Material AeroBuildingWindow;
+            public Material Glass, WhiteGlass, CyanGlass, LimeGlass, WallGlass;
+            public Material Water, Grass, Seed, Pad, RelayInactive, RelayActive, Finish;
+            public Material CyanSolid, BlueSolid, LimeSolid, GlobeBlue, Bubble, SignBack;
+            public Material AeroBuilding, AeroBuildingWindow;
+            public Material Chrome, EmissiveCyan, EmissiveLime, Ground;
 
-            public static Palette Create(AeroPackConfig pack = null)
+            public static Palette Create()
             {
-                Palette palette = new Palette();
-                // Vivid Frutiger Aero palette — high saturation, higher alpha, strong emission
-                palette.Glass = CreateMaterial("Aero Glass", new Color(0.35f, 0.82f, 1f, 0.90f), 0.04f, 0.97f, true, new Color(0f, 0.42f, 0.82f));
-                palette.WhiteGlass = CreateMaterial("Pearl Glass", new Color(0.96f, 1f, 1f, 0.94f), 0.02f, 0.98f, true, new Color(0.08f, 0.24f, 0.32f));
-                palette.CyanGlass = CreateMaterial("Cyan Glass", new Color(0.08f, 0.80f, 1f, 0.92f), 0.04f, 0.97f, true, new Color(0f, 0.62f, 1.1f));
-                palette.LimeGlass = CreateMaterial("Lime Glass", new Color(0.48f, 1f, 0.52f, 0.92f), 0.02f, 0.95f, true, new Color(0.14f, 0.75f, 0.24f));
-                palette.WallGlass = CreateMaterial("Wallrun Glass", new Color(0.35f, 0.90f, 1f, 0.78f), 0.02f, 0.99f, true, new Color(0f, 0.38f, 0.68f));
-                palette.DistantGlass = CreateMaterial("Distant Tower Glass", new Color(0.72f, 0.95f, 1f, 0.42f), 0.06f, 0.88f, true, new Color(0f, 0.12f, 0.22f));
-                palette.Water = CreateMaterial("Water Sheet", new Color(0.18f, 0.62f, 0.88f, 0.30f), 0.02f, 1f, true, new Color(0f, 0.12f, 0.24f));
-                // Frutiger Aero ground: muted soft green, not neon
-                palette.Grass = CreateMaterial("Aero Grass", new Color(0.38f, 0.78f, 0.52f, 0.55f), 0.02f, 0.72f, true, new Color(0.01f, 0.12f, 0.08f));
-                palette.Seed = CreateMaterial("Aero Seed", new Color(0.84f, 1f, 0.92f, 0.96f), 0f, 0.98f, true, new Color(0.42f, 2.4f, 1.4f));
-                palette.Pad = CreateMaterial("Bubble Spring Pad", new Color(0.82f, 1f, 1f, 0.92f), 0.02f, 0.97f, true, new Color(0.18f, 1.0f, 1.5f));
-                palette.RelayInactive = CreateMaterial("Relay Inactive", new Color(0.78f, 0.94f, 1f, 0.62f), 0.08f, 0.88f, true, new Color(0f, 0.14f, 0.26f));
-                palette.RelayActive = CreateMaterial("Relay Active", new Color(0.68f, 1f, 0.80f, 0.90f), 0.02f, 0.98f, true, new Color(0.32f, 1.8f, 0.72f));
-                palette.Finish = CreateMaterial("Bloom Finish", new Color(0.72f, 1f, 0.74f, 0.94f), 0.02f, 0.99f, true, new Color(0.62f, 2.6f, 0.84f));
-                palette.CyanSolid = CreateMaterial("Cyan Solid", new Color(0.02f, 0.72f, 1f, 1f), 0.18f, 0.82f, false, new Color(0f, 0.58f, 1.1f));
-                palette.LimeSolid = CreateMaterial("Lime Solid", new Color(0.32f, 0.95f, 0.36f, 1f), 0.06f, 0.72f, false, new Color(0.06f, 0.52f, 0.08f));
-                palette.GlobeBlue = CreateMaterial("Globe Blue", new Color(0.10f, 0.48f, 1f, 0.88f), 0.06f, 0.92f, true, new Color(0f, 0.22f, 0.65f));
-                palette.Bubble = CreateMaterial("Bubble", new Color(0.88f, 1f, 1f, 0.22f), 0.02f, 1f, true, new Color(0f, 0.10f, 0.18f));
-                palette.SignBack = CreateMaterial("Glossy Sign Back", new Color(0.95f, 1f, 1f, 0.78f), 0.04f, 0.94f, true, new Color(0.08f, 0.28f, 0.38f));
-                // Pure white gloss body + vivid blue glass windows — classic Frutiger Aero building look
-                palette.AeroBuilding = CreateMaterial("Aero Building", new Color(0.96f, 0.99f, 1f, 1f), 0.05f, 0.95f, false, new Color(0.06f, 0.18f, 0.38f));
-                palette.AeroBuildingWindow = CreateMaterial("Aero Building Window", new Color(0.22f, 0.68f, 1f, 0.72f), 0.02f, 0.99f, true, new Color(0.04f, 0.42f, 1.0f));
-                return palette;
+                var p = new Palette();
+                p.Glass         = M("Aero Glass",    new Color(0.35f, 0.82f, 1f,   0.90f), 0.04f, 0.97f, true,  new Color(0f,    0.42f, 0.82f));
+                p.WhiteGlass    = M("Pearl Glass",   new Color(0.96f, 1f,   1f,   0.94f), 0.02f, 0.98f, true,  new Color(0.08f, 0.24f, 0.32f));
+                p.CyanGlass     = M("Cyan Glass",    new Color(0.08f, 0.80f, 1f,  0.92f), 0.04f, 0.97f, true,  new Color(0f,    0.62f, 1.1f));
+                p.LimeGlass     = M("Lime Glass",    new Color(0.48f, 1f,   0.52f,0.92f), 0.02f, 0.95f, true,  new Color(0.14f, 0.75f, 0.24f));
+                p.WallGlass     = M("Wall Glass",    new Color(0.35f, 0.90f, 1f,  0.78f), 0.02f, 0.99f, true,  new Color(0f,    0.38f, 0.68f));
+                p.Water         = M("Water",         new Color(0.18f, 0.62f, 0.88f,0.30f),0.02f, 1f,   true,  new Color(0f,    0.12f, 0.24f));
+                p.Grass         = M("Aero Grass",    new Color(0.38f, 0.78f, 0.52f,0.55f),0.02f, 0.72f, true,  new Color(0.01f, 0.12f, 0.08f));
+                p.Ground        = M("Ground",        new Color(0.78f, 0.96f, 1f,  1f),    0.1f,  0.7f,  false, Color.black);
+                p.Seed          = M("Aero Seed",     new Color(0.84f, 1f,   0.92f,0.96f), 0f,   0.98f, true,  new Color(0.42f, 2.4f,  1.4f));
+                p.Pad           = M("Bounce Pad",    new Color(0.82f, 1f,   1f,  0.92f),  0.02f, 0.97f, true,  new Color(0.18f, 1.0f,  1.5f));
+                p.RelayInactive = M("Relay Off",     new Color(0.78f, 0.94f, 1f,  0.62f), 0.08f, 0.88f, true,  new Color(0f,    0.14f, 0.26f));
+                p.RelayActive   = M("Relay On",      new Color(0.68f, 1f,   0.80f,0.90f), 0.02f, 0.98f, true,  new Color(0.32f, 1.8f,  0.72f));
+                p.Finish        = M("Bloom Finish",  new Color(1f,    0.9f, 0.4f, 0.94f), 0.5f,  0.9f,  false, new Color(1f,    0.7f,  0.1f));
+                // Solid opaque platform materials
+                p.CyanSolid     = M("Cyan Solid",    new Color(0.0f,  0.72f, 1f,  1f),    0.15f, 0.85f, false, new Color(0f,    0.48f, 1.0f));
+                p.BlueSolid     = M("Blue Solid",    new Color(0.0f,  0.55f, 1f,  1f),    0.15f, 0.85f, false, new Color(0f,    0.28f, 0.8f));
+                p.LimeSolid     = M("Lime Solid",    new Color(0.32f, 0.95f, 0.36f,1f),   0.06f, 0.72f, false, new Color(0.06f, 0.52f, 0.08f));
+                p.GlobeBlue     = M("Globe Blue",    new Color(0.10f, 0.48f, 1f,  0.88f), 0.06f, 0.92f, true,  new Color(0f,    0.22f, 0.65f));
+                p.Bubble        = M("Bubble",        new Color(0.88f, 1f,   1f,  0.22f),  0.02f, 1f,   true,  new Color(0f,    0.10f, 0.18f));
+                p.SignBack      = M("Sign Back",     new Color(0.95f, 1f,   1f,  0.78f),  0.04f, 0.94f, true,  new Color(0.08f, 0.28f, 0.38f));
+                p.AeroBuilding  = M("Bldg Body",     new Color(0.96f, 0.99f, 1f,  1f),    0.05f, 0.95f, false, new Color(0.06f, 0.18f, 0.38f));
+                p.AeroBuildingWindow = M("Bldg Win", new Color(0.22f, 0.68f, 1f,  0.72f), 0.02f, 0.99f, true,  new Color(0.04f, 0.42f, 1.0f));
+                p.Chrome        = M("Chrome",        new Color(0.75f, 0.78f, 0.82f,1f),   1f,    1f,   false, Color.black);
+                p.EmissiveCyan  = M("Emissive Cyan", new Color(0f,    1f,   1f,  1f),     0f,    0.8f,  false, new Color(0f,    2f,    2f));
+                p.EmissiveLime  = M("Emissive Lime", new Color(0.67f, 1f,   0.67f,1f),    0f,    0.8f,  false, new Color(0.5f,  1.5f,  0.5f));
+                return p;
             }
 
-            private static Material CreateMaterial(string name, Color color, float metallic, float smoothness, bool transparent, Color emission)
+            private static Material M(string name, Color col, float met, float smo, bool trans, Color emi)
             {
-                Shader shader = Shader.Find("Universal Render Pipeline/Lit");
-                if (shader == null)
+                Shader sh = Shader.Find("Universal Render Pipeline/Lit");
+                if (sh == null) sh = Shader.Find("Standard");
+                Material m = new Material(sh) { name = name };
+                if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", col); else m.color = col;
+                if (m.HasProperty("_Metallic"))   m.SetFloat("_Metallic",   met);
+                if (m.HasProperty("_Smoothness")) m.SetFloat("_Smoothness", smo);
+                if (emi.maxColorComponent > 0.01f && m.HasProperty("_EmissionColor"))
+                { m.EnableKeyword("_EMISSION"); m.SetColor("_EmissionColor", emi); }
+                if (trans)
                 {
-                    shader = Shader.Find("Standard");
+                    if (m.HasProperty("_Surface")) m.SetFloat("_Surface", 1f);
+                    if (m.HasProperty("_Blend"))   m.SetFloat("_Blend",   0f);
+                    m.SetInt("_SrcBlend", (int)BlendMode.SrcAlpha);
+                    m.SetInt("_DstBlend", (int)BlendMode.OneMinusSrcAlpha);
+                    m.SetInt("_ZWrite", 0);
+                    m.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+                    m.DisableKeyword("_ALPHATEST_ON");
+                    m.renderQueue = (int)RenderQueue.Transparent;
                 }
-
-                Material material = new Material(shader);
-                material.name = name;
-
-                if (material.HasProperty("_BaseColor"))
-                {
-                    material.SetColor("_BaseColor", color);
-                }
-                else
-                {
-                    material.color = color;
-                }
-
-                if (material.HasProperty("_Metallic"))
-                {
-                    material.SetFloat("_Metallic", metallic);
-                }
-
-                if (material.HasProperty("_Smoothness"))
-                {
-                    material.SetFloat("_Smoothness", smoothness);
-                }
-
-                if (emission.maxColorComponent > 0f && material.HasProperty("_EmissionColor"))
-                {
-                    material.EnableKeyword("_EMISSION");
-                    material.SetColor("_EmissionColor", emission);
-                }
-
-                if (transparent)
-                {
-                    if (material.HasProperty("_Surface"))
-                    {
-                        material.SetFloat("_Surface", 1f);
-                    }
-
-                    if (material.HasProperty("_Blend"))
-                    {
-                        material.SetFloat("_Blend", 0f);
-                    }
-
-                    material.SetInt("_SrcBlend", (int)BlendMode.SrcAlpha);
-                    material.SetInt("_DstBlend", (int)BlendMode.OneMinusSrcAlpha);
-                    material.SetInt("_ZWrite", 0);
-                    material.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
-                    material.DisableKeyword("_ALPHATEST_ON");
-                    material.renderQueue = (int)RenderQueue.Transparent;
-                }
-
-                return material;
+                return m;
             }
         }
     }
