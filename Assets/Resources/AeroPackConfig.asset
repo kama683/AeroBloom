@@ -1,0 +1,27 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 00f4825394dbe02449518514eb5c4e4a, type: 3}
+  m_Name: AeroPackConfig
+  m_EditorClassIdentifier: Assembly-CSharp::AeroBloom.AeroPackConfig
+  skyboxMaterial: {fileID: 2100000, guid: 6b564318c25e22a439388f425b3ec9df, type: 2}
+  globalVolumeProfile: {fileID: 11400000, guid: 83be9d30081303a4ba71fc333a03e241, type: 2}
+  grassMaterial: {fileID: 2100000, guid: 50b41ca0833858d43b8a88825956d275, type: 2}
+  musicMain: {fileID: 8300000, guid: 44d40d519be2a4a44b6e96cb136a3d33, type: 3}
+  musicAlt: {fileID: 8300000, guid: 946f20b8abdf7d94598fc24120f758d4, type: 3}
+  sfxPop: {fileID: 8300000, guid: 342fdaa7bfedc09458cf5dc37dbdd6af, type: 3}
+  sfxSwoosh: {fileID: 8300000, guid: 3c86cdb0aa00e784f9da8b9083a6af81, type: 3}
+  basicBuildingPrefab: {fileID: 5941033103852500555, guid: ca5524992e992d849a429695ee6c68ca, type: 3}
+  towerBuildingPrefab: {fileID: 6896752108726849978, guid: 442e4dd3de00b484888d634f65bf86a3, type: 3}
+  earthPrefab: {fileID: 6214115737403659264, guid: 514616dfc2fb9864294f36011dc88f1a, type: 3}
+  footstepParticlesPrefab: {fileID: 7565357740948326728, guid: 0f81612981d474548839eb7338dc753d, type: 3}
+  msnBuddyPrefab: {fileID: 919132149155446097, guid: 3d946444fba3eb74db0a060547d5c491, type: 3}
+  msnBuddyAnimator: {fileID: 9100000, guid: bc5e183d48b4b724fac63b38471b6583, type: 2}
