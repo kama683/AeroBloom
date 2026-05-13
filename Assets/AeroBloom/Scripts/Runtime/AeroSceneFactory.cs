@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
+using TMPro;
 
 namespace AeroBloom
 {
@@ -307,9 +308,9 @@ namespace AeroBloom
 
             Plat(s, "Spawn Island", new Vector3(0f, 0f, 0f), new Vector3(22f, 1f, 22f), p.BlueSolid);
 
-            Sign(s, "Welcome",  "AEROBLOOM\nAscend the Summit",      new Vector3(-7f, 1.6f,  3f), Quaternion.Euler(0, 20f,  0), p);
-            Sign(s, "Controls", "WASD Move  SPACE Jump\nSHIFT Sprint", new Vector3(7f,  1.6f,  3f), Quaternion.Euler(0,-20f,  0), p);
-            Sign(s, "Goal",     "Collect AeroSeeds\nReach the top!",   new Vector3(0f,  1.6f, 10f), Quaternion.identity,          p);
+            Sign(s, "Welcome",  "AEROBLOOM\nAscend the Summit",        new Vector3( 0f, 3.4f,  3f), Quaternion.identity,            p);
+            Sign(s, "Controls", "WASD Move  SPACE Jump\nSHIFT Sprint", new Vector3(-6f, 3.4f,  8f), Quaternion.Euler(0f, 22f, 0f),  p);
+            Sign(s, "Goal",     "Collect AeroSeeds\nReach the top!",   new Vector3( 6f, 3.4f,  8f), Quaternion.Euler(0f,-22f, 0f),  p);
 
             // 8 stepping platforms gently rising north
             float[] sz = { 14f, 22f, 31f, 40f, 49f, 58f, 67f, 76f };
@@ -840,10 +841,15 @@ namespace AeroBloom
                 body.transform.localScale    = Vector3.one;
                 DestroyCollidersRecursive(body);
 
-                Animator anim = body.GetComponent<Animator>();
+                // Search entire hierarchy — prefab Animator may be on a child (e.g. Armature)
+                Animator anim = body.GetComponentInChildren<Animator>(true);
                 if (anim == null) anim = body.AddComponent<Animator>();
                 if (pack.msnBuddyAnimator != null)
                     anim.runtimeAnimatorController = pack.msnBuddyAnimator;
+
+                // AnimationEvents fire on the same GameObject as the Animator
+                if (anim.gameObject.GetComponent<AeroAnimEvents>() == null)
+                    anim.gameObject.AddComponent<AeroAnimEvents>();
 
                 player.bodyTransform = body.transform;
                 player.bodyAnimator  = anim;
@@ -952,19 +958,29 @@ namespace AeroBloom
 
         private static void Sign(Transform root, string name, string text, Vector3 pos, Quaternion rot, Palette p)
         {
-            var back = Plat(root, name + "_Back", pos, new Vector3(5f, 1.8f, 0.1f), rot, p.SignBack);
+            var back = Plat(root, name + "_Back", pos, new Vector3(5.6f, 2.4f, 0.14f), rot, p.SignBack);
             DestroyCollider(back);
 
             GameObject tGO = new GameObject(name + "_Text");
             tGO.transform.SetParent(root, false);
-            tGO.transform.SetPositionAndRotation(
-                pos + rot * new Vector3(0f, 0f, -0.07f),
-                rot);
-            TextMesh tm = tGO.AddComponent<TextMesh>();
-            tm.text = text; tm.anchor = TextAnchor.MiddleCenter;
-            tm.alignment = TextAlignment.Center;
-            tm.characterSize = 0.09f; tm.fontSize = 46;
-            tm.color = new Color(0.03f, 0.22f, 0.34f);
+
+            // Add TMP before setting position — AddComponent replaces Transform with RectTransform
+            TextMeshPro tmp = tGO.AddComponent<TextMeshPro>();
+
+            // Use world-space setters AFTER the component is attached
+            tmp.rectTransform.position = pos + rot * new Vector3(0f, 0f, -0.09f);
+            tmp.rectTransform.rotation = rot;
+            tmp.rectTransform.sizeDelta = new Vector2(5.2f, 2.1f);
+
+            tmp.text             = text;
+            tmp.alignment        = TextAlignmentOptions.Center;
+            tmp.color            = new Color(0.02f, 0.16f, 0.30f);
+            tmp.fontStyle        = FontStyles.Bold;
+            tmp.textWrappingMode = TextWrappingModes.Normal;
+            tmp.overflowMode     = TextOverflowModes.Truncate;
+            tmp.enableAutoSizing = true;
+            tmp.fontSizeMin      = 10f;
+            tmp.fontSizeMax      = 90f;
         }
 
         private static void SpeedGate(Transform root, string name, Vector3 pos, Quaternion rot, Palette p, Vector3 impulse)

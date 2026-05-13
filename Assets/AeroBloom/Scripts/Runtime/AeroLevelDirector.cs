@@ -1,3 +1,4 @@
+using System.Collections;
 using UnityEngine;
 
 namespace AeroBloom
@@ -24,6 +25,7 @@ namespace AeroBloom
         private int checkpointsActivated;
         private float playerSpeed;
         private bool finished;
+        private bool isRespawning;
         private string message = "";
         private float messageUntil;
 
@@ -95,7 +97,7 @@ namespace AeroBloom
             AudioClip musicClip = (pack != null && pack.musicMain != null)
                 ? pack.musicMain
                 : AeroAudioSynth.GetAmbientPad();
-            float musicVolume = (pack != null && pack.musicMain != null) ? 0.6f : 0.24f;
+            float musicVolume = (pack != null && pack.musicMain != null) ? 0.15f : 0.18f;
 
             AudioSource ambient = gameObject.AddComponent<AudioSource>();
             ambient.clip = musicClip;
@@ -179,7 +181,7 @@ namespace AeroBloom
             ShowMessage("Aero seed " + seedsCollected + "/" + seedTotal + " collected.", 1.05f);
 
             if (packSfxPop != null)
-                audioSource.PlayOneShot(packSfxPop, 0.8f);
+                audioSource.PlayOneShot(packSfxPop, 1.0f);
             else
                 PlayUiTone(740f + seedsCollected * 8f, 0.09f, 0.16f);
 
@@ -193,7 +195,7 @@ namespace AeroBloom
         public void PlaySwoosh()
         {
             if (packSfxSwoosh != null)
-                audioSource.PlayOneShot(packSfxSwoosh, 0.65f);
+                audioSource.PlayOneShot(packSfxSwoosh, 0.9f);
         }
 
         public void FinishRun()
@@ -211,14 +213,39 @@ namespace AeroBloom
 
         public void RespawnPlayer(string reason)
         {
-            if (player == null)
+            if (player == null || isRespawning)
             {
                 return;
             }
 
-            player.Teleport(checkpointPosition, checkpointRotation);
-            ShowMessage(reason, 1.1f);
+            isRespawning = true;
             PlayUiTone(392f, 0.12f, 0.16f);
+            StartCoroutine(RespawnSequence(reason));
+        }
+
+        private IEnumerator RespawnSequence(string reason)
+        {
+            // Player falls visibly for 1.4 s before the fade kicks in
+            yield return new WaitForSeconds(0.8f);
+
+            ShowMessage(reason, 2.2f);
+
+            Vector3    savedPos = checkpointPosition;
+            Quaternion savedRot = checkpointRotation;
+
+            if (hud != null)
+            {
+                hud.TriggerRespawnFade(() =>
+                {
+                    player.Teleport(savedPos, savedRot);
+                    isRespawning = false;
+                });
+            }
+            else
+            {
+                player.Teleport(savedPos, savedRot);
+                isRespawning = false;
+            }
         }
 
         public void ShowMessage(string text, float duration)
@@ -234,7 +261,7 @@ namespace AeroBloom
                 return;
             }
 
-            audioSource.PlayOneShot(AeroAudioSynth.GetTone("tone", frequency, duration, volume));
+            audioSource.PlayOneShot(AeroAudioSynth.GetTone("tone", frequency, duration, volume * 2.8f));
         }
 
         public static string FormatTime(float seconds)

@@ -66,8 +66,8 @@ namespace AeroBloom
         private bool wasWallRunning;
         private float wallRunTimer;
         private Vector3 wallNormal;
-        private AeroMovingPlatform currentPlatform;
-        private AeroMovingPlatform touchedPlatform;
+        private Transform currentPlatformTransform;
+        private Transform touchedPlatformTransform;
         private Vector3 previousPlatformPosition;
         private float standingHeight;
         private Vector3 standingCenter;
@@ -179,7 +179,7 @@ namespace AeroBloom
         {
             bool groundedAtStart = controller.isGrounded;
             ApplyMovingPlatform(groundedAtStart);
-            touchedPlatform = null;
+            touchedPlatformTransform = null;
 
             if (groundedAtStart)
             {
@@ -264,14 +264,14 @@ namespace AeroBloom
             if ((flags & CollisionFlags.Above) != 0 && verticalVelocity > 0f)
                 verticalVelocity = 0f;
 
-            if (touchedPlatform != null)
+            if (touchedPlatformTransform != null)
             {
-                currentPlatform = touchedPlatform;
-                previousPlatformPosition = currentPlatform.transform.position;
+                currentPlatformTransform = touchedPlatformTransform;
+                previousPlatformPosition = currentPlatformTransform.position;
             }
             else if (!controller.isGrounded)
             {
-                currentPlatform = null;
+                currentPlatformTransform = null;
             }
         }
 
@@ -418,12 +418,12 @@ namespace AeroBloom
 
         private void ApplyMovingPlatform(bool grounded)
         {
-            if (currentPlatform == null || !grounded)
+            if (currentPlatformTransform == null || !grounded)
                 return;
-            Vector3 delta = currentPlatform.transform.position - previousPlatformPosition;
+            Vector3 delta = currentPlatformTransform.position - previousPlatformPosition;
             if (delta.sqrMagnitude > 0f)
                 controller.Move(delta);
-            previousPlatformPosition = currentPlatform.transform.position;
+            previousPlatformPosition = currentPlatformTransform.position;
         }
 
         private void UpdateCamera(float dt)
@@ -504,7 +504,7 @@ namespace AeroBloom
 
             planarVelocity = Vector3.zero;
             verticalVelocity = -2f;
-            currentPlatform = null;
+            currentPlatformTransform = null;
             cameraPitch = 0f;
             tpYaw = rotation.eulerAngles.y;
 
@@ -516,9 +516,11 @@ namespace AeroBloom
         {
             if (hit.normal.y < 0.45f)
                 return;
-            AeroMovingPlatform platform = hit.collider.GetComponentInParent<AeroMovingPlatform>();
-            if (platform != null)
-                touchedPlatform = platform;
+            Transform root = hit.collider.transform;
+            PlatformMover mover = root.GetComponentInParent<PlatformMover>();
+            if (mover != null) { touchedPlatformTransform = mover.transform; return; }
+            AeroMovingPlatform amp = root.GetComponentInParent<AeroMovingPlatform>();
+            if (amp != null) touchedPlatformTransform = amp.transform;
         }
 
         private static void LockCursor()
