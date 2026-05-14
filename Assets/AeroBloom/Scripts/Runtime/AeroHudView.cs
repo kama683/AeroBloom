@@ -1,6 +1,9 @@
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
+#if ENABLE_INPUT_SYSTEM
+using UnityEngine.InputSystem;
+#endif
 
 namespace AeroBloom
 {
@@ -91,8 +94,17 @@ namespace AeroBloom
             TickFade();
             TickFinishAnim();
 
-            if (finishShown && Input.GetKeyDown(KeyCode.Tab))
+            if (finishShown && IsTabPressed())
                 ToggleResultsPanel();
+        }
+
+        private static bool IsTabPressed()
+        {
+#if ENABLE_INPUT_SYSTEM
+            return Keyboard.current != null && Keyboard.current.tabKey.wasPressedThisFrame;
+#else
+            return Input.GetKeyDown(KeyCode.Tab);
+#endif
         }
 
         private void ToggleResultsPanel()

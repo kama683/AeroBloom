@@ -105,6 +105,12 @@ namespace AeroBloom
             ambient.loop = true;
             ambient.spatialBlend = 0f;
             ambient.Play();
+
+            if (player != null)
+            {
+                player.enabled = false;
+                StartCoroutine(LaunchIntro(player));
+            }
         }
 
         private void Update()
@@ -217,6 +223,18 @@ namespace AeroBloom
             yield return new WaitForSeconds(1.0f);
             if (player != null)
                 player.BeginVictory();
+        }
+
+        private IEnumerator LaunchIntro(AeroPlayerController pc)
+        {
+            yield return null; // let first frame render before intro appears
+            AeroStoryIntro.Play(() =>
+            {
+                startTime = Time.time; // timer begins the moment intro closes
+                if (pc != null) pc.enabled = true;
+                Cursor.lockState = CursorLockMode.Locked;
+                Cursor.visible   = false;
+            });
         }
 
         public void RespawnPlayer(string reason)
