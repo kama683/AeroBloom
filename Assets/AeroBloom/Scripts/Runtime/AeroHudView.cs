@@ -25,6 +25,7 @@ namespace AeroBloom
         private Text   finishDetails;
         private bool   finishShown;
         private float  finishAnimT;
+        private bool   victoryStoryShown;  // victory story shown before results panel
         private bool       panelHidden;
         private Button     floatingResultsBtn;
         private GameObject dismissOverlay;
@@ -84,8 +85,13 @@ namespace AeroBloom
             messageText.enabled  = showMsg;
             messageText.text     = message;
 
-            if (finished && !finishShown)
-                ShowFinish(time, seeds, seedTotal, checkpoints, checkpointTotal);
+            if (finished && !finishShown && !victoryStoryShown)
+            {
+                victoryStoryShown = true;
+                // Capture locals for use inside lambda (closure over loop vars is safe here)
+                string t = time; int s = seeds, st = seedTotal, cp = checkpoints, cpt = checkpointTotal;
+                AeroVictoryScreen.Show(t, s >= st, () => ShowFinish(t, s, st, cp, cpt));
+            }
         }
 
         // ─────────────────────────────────────────────────────────

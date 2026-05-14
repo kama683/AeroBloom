@@ -1532,14 +1532,14 @@ namespace AeroBloom
                 p.RelayInactive = M("Relay Off",     new Color(0.78f, 0.94f, 1f,  0.62f), 0.08f, 0.92f, true,  new Color(0f,    0.18f, 0.32f));
                 p.RelayActive   = M("Relay On",      new Color(0.68f, 1f,   0.80f,0.90f), 0.02f, 0.98f, true,  new Color(0.42f, 2.8f,  1.0f));
                 p.Finish        = M("Bloom Finish",  new Color(1f,    0.9f, 0.4f, 0.94f), 0.5f,  0.92f, false, new Color(1.2f,  0.85f, 0.12f));
-                // Solid opaque platform materials
-                p.CyanSolid     = M("Cyan Solid",    new Color(0.0f,  0.72f, 1f,  1f),    0.18f, 0.88f, false, new Color(0f,    0.62f, 1.2f));
-                p.BlueSolid     = M("Blue Solid",    new Color(0.0f,  0.55f, 1f,  1f),    0.18f, 0.88f, false, new Color(0f,    0.35f, 1.0f));
+                // Glass platform materials — Frutiger Aero aqua glass
+                p.CyanSolid     = M("Cyan Glass Plat", new Color(0.10f, 0.82f, 1f,  0.72f), 0.12f, 0.97f, true,  new Color(0f,    0.70f, 1.5f));
+                p.BlueSolid     = M("Blue Glass Plat", new Color(0.04f, 0.54f, 1f,  0.68f), 0.10f, 0.96f, true,  new Color(0f,    0.38f, 1.2f));
                 p.LimeSolid     = M("Lime Solid",    new Color(0.32f, 0.95f, 0.36f,1f),   0.06f, 0.78f, false, new Color(0.08f, 0.68f, 0.12f));
                 p.GlobeBlue     = M("Globe Blue",    new Color(0.10f, 0.48f, 1f,  0.88f), 0.06f, 0.94f, true,  new Color(0f,    0.28f, 0.80f));
                 p.Bubble        = M("Bubble",        new Color(0.88f, 1f,   1f,  0.22f),  0.04f, 1f,    true,  new Color(0f,    0.14f, 0.22f));
                 p.SignBack      = M("Sign Back",     new Color(0.95f, 1f,   1f,  0.82f),  0.04f, 0.96f, true,  new Color(0.08f, 0.32f, 0.45f));
-                p.AeroBuilding  = M("Bldg Body",     new Color(0.55f, 0.74f, 1f,  1f),    0.10f, 0.80f, false, new Color(0.01f, 0.10f, 0.60f));
+                p.AeroBuilding  = M("Bldg Body",     new Color(0.58f, 0.78f, 1f,  1f),    0.15f, 0.93f, false, new Color(0.02f, 0.14f, 0.82f));
                 p.AeroBuildingWindow = M("Bldg Win", new Color(0.08f, 0.58f, 1f,  0.64f), 0.04f, 1.00f, true,  new Color(0.04f, 0.72f, 2.00f));
                 p.Chrome        = M("Chrome",        new Color(0.80f, 0.84f, 0.90f,1f),   1f,    1f,    false, Color.black);
                 p.EmissiveCyan  = M("Emissive Cyan", new Color(0f,    1f,   1f,  1f),     0f,    0.92f, false, new Color(0f,    3.2f,  3.5f));
