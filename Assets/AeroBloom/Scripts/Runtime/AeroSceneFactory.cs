@@ -1093,16 +1093,17 @@ namespace AeroBloom
             const float finishY = 134f;
             const float finishZ = 782f;
 
-            Plat(s, "SummitStep1", new Vector3(0f, 130.5f, 769f), new Vector3(7f, 0.6f, 7f), p.CyanSolid);
-            Plat(s, "SummitStep2", new Vector3(0f, 132.5f, 776f), new Vector3(7f, 0.6f, 7f), p.BlueSolid);
+            // Steps are south of the platform footprint (finish south edge = 782-7 = 775)
+            Plat(s, "SummitStep1", new Vector3(0f, 130.5f, 760f), new Vector3(6f, 0.6f, 6f), p.CyanSolid);
+            Plat(s, "SummitStep2", new Vector3(0f, 132.5f, 768f), new Vector3(6f, 0.6f, 6f), p.BlueSolid);
 
-            Plat(s, "FinishPlatform", new Vector3(0f, finishY, finishZ), new Vector3(20f, 0.6f, 20f), whiteMat);
+            Plat(s, "FinishPlatform", new Vector3(0f, finishY, finishZ), new Vector3(14f, 0.6f, 14f), whiteMat);
 
-            // Gold edge trim (BoxChild uses localPos relative to section at world 0,0,0)
-            BoxChild(s, "GoldN", new Vector3(  0f,      finishY + 1.2f, finishZ + 10.3f), new Vector3(20.6f, 0.4f, 0.4f), goldMat);
-            BoxChild(s, "GoldS", new Vector3(  0f,      finishY + 1.2f, finishZ - 10.3f), new Vector3(20.6f, 0.4f, 0.4f), goldMat);
-            BoxChild(s, "GoldE", new Vector3( 10.3f,    finishY + 1.2f, finishZ),         new Vector3(0.4f,  0.4f, 20.6f), goldMat);
-            BoxChild(s, "GoldW", new Vector3(-10.3f,    finishY + 1.2f, finishZ),         new Vector3(0.4f,  0.4f, 20.6f), goldMat);
+            // Gold edge trim — flush with platform top surface (platform is 14x14)
+            BoxChild(s, "GoldN", new Vector3(  0f,  finishY + 0.32f, finishZ + 7.3f), new Vector3(14.6f, 0.25f, 0.4f), goldMat);
+            BoxChild(s, "GoldS", new Vector3(  0f,  finishY + 0.32f, finishZ - 7.3f), new Vector3(14.6f, 0.25f, 0.4f), goldMat);
+            BoxChild(s, "GoldE", new Vector3( 7.3f, finishY + 0.32f, finishZ),         new Vector3(0.4f,  0.25f, 14.6f), goldMat);
+            BoxChild(s, "GoldW", new Vector3(-7.3f, finishY + 0.32f, finishZ),         new Vector3(0.4f,  0.25f, 14.6f), goldMat);
 
             SpawnPointLight(s, "FinishGold", new Vector3(  0f, finishY + 12f, finishZ), new Color(1f,   0.9f, 0.3f), 6f, 100f);
             SpawnPointLight(s, "FinishCyan", new Vector3(  0f, finishY +  7f, finishZ), new Color(0f,   1f,   0.9f), 4f,  80f);
@@ -1138,12 +1139,11 @@ namespace AeroBloom
             finTrig.transform.SetParent(s, false);
             finTrig.transform.position = new Vector3(0f, finishY + 3f, finishZ);
             BoxCollider ftc = finTrig.AddComponent<BoxCollider>();
-            ftc.isTrigger = true; ftc.size = new Vector3(20f, 6f, 20f);
+            ftc.isTrigger = true; ftc.size = new Vector3(14f, 6f, 14f);
             finTrig.AddComponent<AeroFinishGate>();
 
             Sign(s, "Victory", "YOU REACHED\nTHE SUMMIT!\nAeroBloom Complete!", new Vector3(0f, finishY + 5f, finishZ - 11f), Quaternion.identity, p);
 
-            Checkpoint(s, "Relay 07 Finale", new Vector3(0f, finishY + 1.2f, finishZ), Quaternion.identity, p, ref cps);
         }
 
         // ─────────────────────────────────────────────

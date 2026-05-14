@@ -102,6 +102,11 @@ namespace AeroBloom
             verticalVelocity = 0f;
         }
 
+        public void ExitVictoryMode()
+        {
+            victoryMode = false;
+        }
+
         private void Update()
         {
             float dt = Time.deltaTime;

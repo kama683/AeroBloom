@@ -15,13 +15,16 @@ namespace AeroBloom
         private Image messagePanel;
 
         // ── Finish screen ─────────────────────────────────────────
-        private Image finishPanel;
-        private Image finishGlow;
-        private Text  finishTitle;
-        private Text  finishGrade;
-        private Text  finishDetails;
-        private bool  finishShown;
-        private float finishAnimT;
+        private Image  finishPanel;
+        private Image  finishGlow;
+        private Text   finishTitle;
+        private Text   finishGrade;
+        private Text   finishDetails;
+        private bool   finishShown;
+        private float  finishAnimT;
+        private bool       panelHidden;
+        private Button     floatingResultsBtn;
+        private GameObject dismissOverlay;
 
         // ── Respawn fade ──────────────────────────────────────────
         private Image         fadeOverlay;
@@ -87,6 +90,31 @@ namespace AeroBloom
         {
             TickFade();
             TickFinishAnim();
+
+            if (finishShown && Input.GetKeyDown(KeyCode.Tab))
+                ToggleResultsPanel();
+        }
+
+        private void ToggleResultsPanel()
+        {
+            panelHidden = !panelHidden;
+            finishPanel.gameObject.SetActive(!panelHidden);
+            if (finishGlow    != null) finishGlow.gameObject.SetActive(!panelHidden);
+            if (dismissOverlay != null) dismissOverlay.SetActive(!panelHidden);
+            if (floatingResultsBtn != null) floatingResultsBtn.gameObject.SetActive(panelHidden);
+
+            if (panelHidden)
+            {
+                Cursor.lockState = CursorLockMode.None;
+                Cursor.visible   = true;
+                var dir = AeroLevelDirector.Instance;
+                if (dir != null && dir.player != null) dir.player.ExitVictoryMode();
+            }
+            else
+            {
+                Cursor.lockState = CursorLockMode.None;
+                Cursor.visible   = true;
+            }
         }
 
         private void TickFade()
@@ -142,9 +170,11 @@ namespace AeroBloom
         {
             finishShown = true;
             finishAnimT = 0f;
+            panelHidden = false;
             finishPanel.color = new Color(0.04f, 0.11f, 0.34f, 0f);
             finishPanel.gameObject.SetActive(true);
-            if (finishGlow != null) finishGlow.gameObject.SetActive(true);
+            if (finishGlow    != null) finishGlow.gameObject.SetActive(true);
+            if (dismissOverlay != null) dismissOverlay.SetActive(true);
 
             float elapsed = AeroLevelDirector.Instance != null
                 ? AeroLevelDirector.Instance.ElapsedTime : 0f;
@@ -290,6 +320,23 @@ namespace AeroBloom
             TxtCentre(root, "Cross", font, 18, "+", new Color(1f, 1f, 1f, 0.55f));
 
             // ── Finish panel — Frutiger Aero frosted glass card ────
+            // Transparent full-screen button behind the panel — click outside to dismiss
+            {
+                dismissOverlay = new GameObject("DismissOverlay");
+                dismissOverlay.transform.SetParent(root, false);
+                var img = dismissOverlay.AddComponent<Image>();
+                img.color = new Color(0f, 0f, 0f, 0f);
+                var btn = dismissOverlay.AddComponent<Button>();
+                var cb  = btn.colors;
+                cb.normalColor = cb.highlightedColor = cb.pressedColor = new Color(0f, 0f, 0f, 0f);
+                btn.colors = cb; btn.targetGraphic = img;
+                var rt = img.rectTransform;
+                rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.one;
+                rt.offsetMin = Vector2.zero; rt.offsetMax = Vector2.zero;
+                btn.onClick.AddListener(() => { if (!panelHidden) ToggleResultsPanel(); });
+                dismissOverlay.SetActive(false);
+            }
+
             // Outer glow halo (slightly larger, animates in alongside panel)
             finishGlow = Pnl(root, "FinishGlow",
                 new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(580f, 490f),
@@ -371,6 +418,20 @@ namespace AeroBloom
                 else
                     Application.Quit();
             });
+
+
+            // Floating "RESULTS" button — shown only when panel is hidden
+            floatingResultsBtn = BtnWide(root, "[ TAB ]  SHOW RESULTS",
+                font, new Vector2(0f, 36f), new Color(0.04f, 0.22f, 0.50f, 0.88f));
+            {
+                var rt = floatingResultsBtn.GetComponent<RectTransform>();
+                rt.anchorMin = new Vector2(0.5f, 0f);
+                rt.anchorMax = new Vector2(0.5f, 0f);
+                rt.pivot     = new Vector2(0.5f, 0f);
+                rt.sizeDelta = new Vector2(300f, 46f);
+            }
+            floatingResultsBtn.onClick.AddListener(() => ToggleResultsPanel());
+            floatingResultsBtn.gameObject.SetActive(false);
 
             // ── Fade overlay — drawn on top of everything ─────────
             {
@@ -486,6 +547,13 @@ namespace AeroBloom
             var rt = t.rectTransform;
             rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.zero; rt.pivot = Vector2.zero;
             rt.anchoredPosition = pos; rt.sizeDelta = rect;
+        }
+
+        private static Button BtnWide(Transform p, string label, Font f, Vector2 pos, Color col)
+        {
+            var btn = Btn(p, label, f, pos, col);
+            btn.GetComponent<RectTransform>().sizeDelta = new Vector2(300f, 40f);
+            return btn;
         }
 
         private static Button Btn(Transform p, string label, Font f, Vector2 pos, Color col)
