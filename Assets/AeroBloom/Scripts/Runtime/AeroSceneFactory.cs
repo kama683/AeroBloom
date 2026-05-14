@@ -321,7 +321,7 @@ namespace AeroBloom
         private static void ProceduralBuilding(Transform parent, string name,
             Vector3 pos, Vector3 size, Quaternion rot, int type, Material wall, Material glass, Palette p)
         {
-            Material bodyMat  = LoadFA("FA_GlossyWhite");  if (bodyMat  == null) bodyMat  = p.AeroBuilding;
+            Material bodyMat  = p.AeroBuilding;       // blue neon body — skip FA_GlossyWhite
             Material glassMat = LoadFA("FA_BuildingGlass"); if (glassMat == null) glassMat = p.AeroBuildingWindow;
             Material eMat     = LoadFA("FA_EmissiveCyan");  if (eMat     == null) eMat     = p.EmissiveCyan;
             Material chromMat = LoadFA("FA_Chrome");        if (chromMat == null) chromMat = p.Chrome;
@@ -357,27 +357,41 @@ namespace AeroBloom
                 DestroyCollider(win);
             }
 
-            // ── Emissive cyan trim every ~16 m ────────────────────────
-            float tStep = Mathf.Clamp(size.y / Mathf.Max(1f, Mathf.Floor(size.y / 16f)), 12f, 22f);
+            // ── Emissive cyan trim every ~8 m ─────────────────────────
+            float tStep = Mathf.Clamp(size.y / Mathf.Max(1f, Mathf.Floor(size.y / 8f)), 6f, 11f);
             for (float ly = -hh + tStep * 0.5f; ly < hh; ly += tStep)
             {
                 GameObject et = GameObject.CreatePrimitive(PrimitiveType.Cube);
                 et.name = "ETrim";
                 et.transform.SetParent(body.transform, false);
                 et.transform.localPosition = new Vector3(0f, ly / size.y, 0f);
-                et.transform.localScale    = new Vector3(1.008f, 0.22f / size.y, 1.008f);
+                et.transform.localScale    = new Vector3(1.012f, 0.38f / size.y, 1.012f);
                 AssignMat(et, eMat);
                 DestroyCollider(et);
             }
 
-            // Top edge always glows
+            // Top edge glow
             GameObject topEdge = GameObject.CreatePrimitive(PrimitiveType.Cube);
             topEdge.name = "TopEdge";
             topEdge.transform.SetParent(body.transform, false);
             topEdge.transform.localPosition = new Vector3(0f, 0.502f, 0f);
-            topEdge.transform.localScale    = new Vector3(1.012f, 0.28f / size.y, 1.012f);
+            topEdge.transform.localScale    = new Vector3(1.016f, 0.42f / size.y, 1.016f);
             AssignMat(topEdge, eMat);
             DestroyCollider(topEdge);
+
+            // Base ground glow
+            GameObject baseEdge = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            baseEdge.name = "BaseEdge";
+            baseEdge.transform.SetParent(body.transform, false);
+            baseEdge.transform.localPosition = new Vector3(0f, -0.502f, 0f);
+            baseEdge.transform.localScale    = new Vector3(1.016f, 0.42f / size.y, 1.016f);
+            AssignMat(baseEdge, eMat);
+            DestroyCollider(baseEdge);
+
+            // Cyan point light at building top for ambient glow
+            SpawnPointLight(tower.transform, "BldgTopGlow",
+                new Vector3(0f, hh + 1.5f, 0f),
+                new Color(0f, 0.78f, 1f), 2.2f, size.x * 4.0f);
 
             // ── Type-specific tops ────────────────────────────────────
             switch (type % 5)
@@ -516,9 +530,9 @@ namespace AeroBloom
 
             Plat(s, "Spawn Island", new Vector3(0f, 0f, 0f), new Vector3(22f, 1f, 22f), p.BlueSolid);
 
-            Sign(s, "Welcome",  "AEROBLOOM\nAscend the Summit",        new Vector3( 0f, 3.4f,  3f), Quaternion.identity,            p);
-            Sign(s, "Controls", "WASD Move  SPACE Jump\nSHIFT Sprint", new Vector3(-6f, 3.4f,  8f), Quaternion.Euler(0f, 22f, 0f),  p);
-            Sign(s, "Goal",     "Collect AeroSeeds\nReach the top!",   new Vector3( 6f, 3.4f,  8f), Quaternion.Euler(0f,-22f, 0f),  p);
+            Sign(s, "Welcome",  "AEROBLOOM\nAscend the Summit",        new Vector3( 0f, 3.5f,  6f), Quaternion.identity,           p);
+            Sign(s, "Controls", "WASD Move  SPACE Jump\nSHIFT Sprint", new Vector3(-5f, 3.5f, 11f), Quaternion.Euler(0f, -30f, 0f), p);
+            Sign(s, "Goal",     "Collect AeroSeeds\nReach the top!",   new Vector3( 5f, 3.5f, 11f), Quaternion.Euler(0f,  30f, 0f), p);
 
             // 8 stepping platforms gently rising north
             float[] sz = { 14f, 22f, 31f, 40f, 49f, 58f, 67f, 76f };
@@ -534,18 +548,25 @@ namespace AeroBloom
                 if (i == 5) AddSeed(s, new Vector3(sx[i], sy[i] + 1.5f, sz[i]), dir, p, ref seeds);
             }
 
-            // Organic white pillars flanking the start corridor
-            Material whiteMat = LoadFA("FA_GlossyWhite"); if (whiteMat == null) whiteMat = p.AeroBuilding;
-            BoxNoColl(s, "Pillar L1", new Vector3(-18f, 12f, 15f), new Vector3(4f, 24f, 4f), whiteMat);
-            BoxNoColl(s, "Pillar R1", new Vector3( 18f, 12f, 15f), new Vector3(4f, 24f, 4f), whiteMat);
-            BoxNoColl(s, "Pillar L2", new Vector3(-20f, 20f, 45f), new Vector3(3f, 40f, 3f), whiteMat);
-            BoxNoColl(s, "Pillar R2", new Vector3( 20f, 20f, 45f), new Vector3(3f, 40f, 3f), whiteMat);
+            // Blue neon pillars flanking the start corridor — ground at y=-3.5, bottom at y=-4
+            Material eMat2 = LoadFA("FA_EmissiveCyan"); if (eMat2 == null) eMat2 = p.EmissiveCyan;
+            // center = groundY + height/2  →  -4 + 12 = 8  and  -4 + 20 = 16
+            BoxNoColl(s, "Pillar L1", new Vector3(-18f,  8f, 15f), new Vector3(4f, 24f, 4f), p.AeroBuilding);
+            BoxNoColl(s, "Pillar R1", new Vector3( 18f,  8f, 15f), new Vector3(4f, 24f, 4f), p.AeroBuilding);
+            BoxNoColl(s, "Pillar L2", new Vector3(-20f, 16f, 45f), new Vector3(3f, 40f, 3f), p.AeroBuilding);
+            BoxNoColl(s, "Pillar R2", new Vector3( 20f, 16f, 45f), new Vector3(3f, 40f, 3f), p.AeroBuilding);
+            // Cyan glow rings at pillar tops  (top = center + height/2)
+            BoxNoColl(s, "PillarTopL1", new Vector3(-18f, 20f, 15f), new Vector3(4.4f, 0.5f, 4.4f), eMat2);
+            BoxNoColl(s, "PillarTopR1", new Vector3( 18f, 20f, 15f), new Vector3(4.4f, 0.5f, 4.4f), eMat2);
+            BoxNoColl(s, "PillarTopL2", new Vector3(-20f, 36f, 45f), new Vector3(3.4f, 0.5f, 3.4f), eMat2);
+            BoxNoColl(s, "PillarTopR2", new Vector3( 20f, 36f, 45f), new Vector3(3.4f, 0.5f, 3.4f), eMat2);
 
             // Ground-level lime accent patches (visual only)
             Material limeE = LoadFA("FA_EmissiveLime"); if (limeE == null) limeE = p.LimeSolid;
             BoxNoColl(s, "GrassPatchL", new Vector3(-12f, -0.05f, 30f), new Vector3(8f, 0.1f, 20f), limeE);
             BoxNoColl(s, "GrassPatchR", new Vector3( 12f, -0.05f, 30f), new Vector3(8f, 0.1f, 20f), limeE);
 
+            Sign(s, "Warn01", "DISC TOWERS AHEAD!\nPlatforms move and spin.\nTime your jumps carefully!", new Vector3(0f, 4.3f, 68f), Quaternion.identity, p, noPole: true);
             Checkpoint(s, "Relay 01 Grassland", new Vector3(0f, 2.8f, 78f), Quaternion.identity, p, ref cps);
         }
 
@@ -558,7 +579,7 @@ namespace AeroBloom
             Transform s = Child(root, "Section2_TowerDiscHops");
 
             Plat(s, "ApproachA", new Vector3(0f, 2.5f, 82f), new Vector3(8f, 0.5f, 5f), p.CyanSolid);
-            Sign(s, "DiscHint", "Hop the Disc Towers!\nTime the moving ones!", new Vector3(0f, 4.6f, 83f), Quaternion.identity, p);
+            Sign(s, "DiscHint", "Hop the Disc Towers!\nTime the moving ones!", new Vector3(5f, 4.3f, 88f), Quaternion.Euler(0f, 30f, 0f), p, noPole: true);
 
             Material shaftMat = LoadFA("FA_Chrome");       if (shaftMat == null) shaftMat = p.Chrome;
             Material eMat     = LoadFA("FA_EmissiveCyan"); if (eMat     == null) eMat     = p.EmissiveCyan;
@@ -603,6 +624,10 @@ namespace AeroBloom
 
                 SpawnPointLight(disc.transform, "DiscGlow", new Vector3(0f, 2f, 0f), new Color(0f, 0.8f, 1f), 1.0f, 16f);
                 if (i % 2 == 0) AddSeed(s, t.pos + new Vector3(0f, t.shaftH + 2.5f, 0f), dir, p, ref seeds);
+
+                // All but the last bridge disc fade away after 3 s
+                if (i < towers.Length - 1)
+                    disc.AddComponent<AeroDiscFade>();
             }
 
             AddSeed(s, new Vector3(0f, 17.5f, 206f), dir, p, ref seeds);
@@ -610,6 +635,7 @@ namespace AeroBloom
             // Bridge platform: Tower8 top 15.5 m → bridge 17 m (single jump) → Canyon plat1 19 m (single jump)
             Plat(s, "CanyonBridge", new Vector3(0f, 17f, 213f), new Vector3(8f, 0.5f, 5f), p.BlueSolid);
             // Relay gate sits ON the bridge platform (bridge top = 17.25 m)
+            Sign(s, "Warn02", "CANYON AHEAD!\nPlatforms rise 2-3m each step.\nDouble jump is your best friend!", new Vector3(0f, 18.8f, 203f), Quaternion.identity, p, noPole: true);
             Checkpoint(s, "Relay 02 Disc Hops", new Vector3(0f, 17.3f, 213f), Quaternion.identity, p, ref cps);
         }
 
@@ -674,6 +700,7 @@ namespace AeroBloom
             Plat(s, "CanyonEnd", new Vector3(0f, 46f, 355f), new Vector3(12f, 0.7f, 9f), p.BlueSolid);
             BoxNoColl(s, "CanyonEndGlow", new Vector3(0f, 46.4f, 355f), new Vector3(12.5f, 0.15f, 9.5f), limeMat);
 
+            Sign(s, "Warn03", "MIST ZONE AHEAD!\nVisibility is very low.\nFollow the glowing lights!", new Vector3(0f, 47.9f, 348f), Quaternion.identity, p, noPole: true);
             Checkpoint(s, "Relay 03 Canyon", new Vector3(0f, 46.4f, 358f), Quaternion.identity, p, ref cps);
             AddSeed(s, new Vector3(0f, 49f, 356f), dir, p, ref seeds);
         }
@@ -687,7 +714,7 @@ namespace AeroBloom
             Transform s = Child(root, "Section4_MistCrossing");
             Material eMat = LoadFA("FA_EmissiveLime"); if (eMat == null) eMat = p.EmissiveLime;
 
-            Sign(s, "MistHint", "Careful...\nThe mist hides the path.", new Vector3(0f, 51f, 362f), Quaternion.identity, p);
+            Sign(s, "MistHint", "Careful...\nThe mist hides the path.", new Vector3(-5f, 47.9f, 368f), Quaternion.Euler(0f, -30f, 0f), p, noPole: true);
 
             // 12 narrow platforms — start at y≈48 (S3 end), ~1.5m gain each
             (Vector3 pos, Vector3 size, bool moves, Vector3 axis, float amp, float spd)[] plats =
@@ -746,6 +773,7 @@ namespace AeroBloom
             msr.shadowCastingMode = ShadowCastingMode.Off;
             msr.material = MakeParticleMat(new Color(0.87f, 0.95f, 1f, 0.10f));
 
+            Sign(s, "Warn04", "TOWER ASCENT BEGINS!\nVertical climb — no falling!\nUse dash and wall-run.", new Vector3(0f, 65.8f, 456f), Quaternion.identity, p, noPole: true);
             Checkpoint(s, "Relay 04 Mist", new Vector3(0f, 64.3f, 466f), Quaternion.identity, p, ref cps);
             AddSeed(s, new Vector3(0f, 66.5f, 465f), dir, p, ref seeds);
         }
@@ -762,7 +790,7 @@ namespace AeroBloom
             Material eMat     = LoadFA("FA_EmissiveCyan");  if (eMat     == null) eMat     = p.EmissiveCyan;
 
             Plat(s, "S5Approach", new Vector3(0f, 64f, 467f), new Vector3(9f, 0.5f, 6f), p.BlueSolid);
-            Sign(s, "AscentHint", "NOW WE GO UP!\nAscend the Towers!", new Vector3(0f, 66.6f, 468f), Quaternion.identity, p);
+            Sign(s, "AscentHint", "NOW WE GO UP!\nAscend the Towers!", new Vector3(5f, 65.8f, 476f), Quaternion.Euler(0f, 30f, 0f), p, noPole: true);
 
             // 7 disc towers — ascending from y~64 (S4 end), ~2m gain each
             // disc top = shaftH + 0.4  (discThick=0.8, discThick*0.5=0.4)
@@ -806,11 +834,16 @@ namespace AeroBloom
 
                 if (i % 2 == 0)
                     AddSeed(s, t.pos + new Vector3(0f, t.shaftH + 2.5f, 0f), dir, p, ref seeds);
+
+                // Skip the last disc (has bounce pad) — all others fade after 3 s
+                if (i < towers.Length - 1)
+                    disc.AddComponent<AeroDiscFade>();
             }
 
             // Bounce pad on the final disc to launch player into section 6
             BounceAt(s, "AscentBoost", new Vector3(0f, 79.5f, 569f), p, new Vector3(0f, 18f, 6f));
 
+            Sign(s, "Warn05", "HIGH SPRINT ZONE AHEAD!\nSPRINT through speed gates!\nMaximum speed required!", new Vector3(0f, 80.5f, 557f), Quaternion.identity, p, noPole: true);
             Checkpoint(s, "Relay 05 Ascent", new Vector3(0f, 79f, 567f), Quaternion.identity, p, ref cps);
             AddSeed(s, new Vector3(0f, 81.5f, 567f), dir, p, ref seeds);
         }
@@ -825,7 +858,7 @@ namespace AeroBloom
             Material platMat = LoadFA("FA_Platform");      if (platMat == null) platMat = p.WhiteGlass;
             Material eMat    = LoadFA("FA_EmissiveCyan");  if (eMat    == null) eMat    = p.EmissiveCyan;
 
-            Sign(s, "RunHint", "SPRINT AHEAD!\nUse the Speed Gates!", new Vector3(0f, 82f, 575f), Quaternion.identity, p);
+            Sign(s, "RunHint", "SPRINT AHEAD!\nUse the Speed Gates!", new Vector3(-5f, 80.5f, 577f), Quaternion.Euler(0f, -30f, 0f), p, noPole: true);
 
             // Platforms start at y≈79 (S5 end), 3 m gain each — every step double-jumpable.
             // Old values had 6–7 m gaps (impossible). Fixed to uniform +3 m progression.
@@ -882,6 +915,7 @@ namespace AeroBloom
                 MakeSphere(s, "HighSphere" + i, new Vector3(-18f + i * 9f, 86f + i * 2f, 612f + i * 6f),
                     1.5f + i * 0.4f, chromeMat, false);
 
+            Sign(s, "Warn06", "BUBBLE FINALE AHEAD!\nJump on floating bubbles.\nOne hop at a time — don't rush!", new Vector3(0f, 99.1f, 653f), Quaternion.identity, p, noPole: true);
             Checkpoint(s, "Relay 06 HighRun", new Vector3(0f, 97.6f, 663f), Quaternion.identity, p, ref cps);
             AddSeed(s, new Vector3(0f, 100f, 663f), dir, p, ref seeds);
         }
@@ -898,7 +932,7 @@ namespace AeroBloom
             Material eMat     = LoadFA("FA_EmissiveCyan"); if (eMat     == null) eMat     = p.EmissiveCyan;
             Material whiteMat = LoadFA("FA_GlossyWhite"); if (whiteMat == null) whiteMat = p.AeroBuilding;
 
-            Sign(s, "FinaleHint", "THE SUMMIT IS NEAR!\nJump through the Bubbles!", new Vector3(0f, 100f, 670f), Quaternion.identity, p);
+            Sign(s, "FinaleHint", "THE SUMMIT IS NEAR!\nJump through the Bubbles!", new Vector3(5f, 99.1f, 673f), Quaternion.Euler(0f, 30f, 0f), p, noPole: true);
 
             // 11 bubble disc platforms — start at y=99 (2.3 m above S6 end, single-jumpable).
             // Shifted down 2 m from original so S6→S7 transition is not impossible.
@@ -1202,10 +1236,21 @@ namespace AeroBloom
             lt.intensity = 0.8f; lt.color = new Color(0.68f, 1f, 0.9f);
         }
 
-        private static void Sign(Transform root, string name, string text, Vector3 pos, Quaternion rot, Palette p)
+        private static void Sign(Transform root, string name, string text, Vector3 pos, Quaternion rot, Palette p, bool noPole = false)
         {
             var back = Plat(root, name + "_Back", pos, new Vector3(5.6f, 2.4f, 0.14f), rot, p.SignBack);
             DestroyCollider(back);
+
+            if (!noPole)
+            {
+                var pole = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+                pole.name = name + "_Pole";
+                pole.transform.SetParent(root, false);
+                pole.transform.SetPositionAndRotation(pos + rot * new Vector3(0f, -2.7f, 0f), rot);
+                pole.transform.localScale = new Vector3(0.12f, 1.5f, 0.12f);
+                AssignMat(pole, p.Chrome);
+                DestroyCollider(pole);
+            }
 
             // World-space Canvas: 100 canvas units = 1 world metre (scale 0.01)
             GameObject canvasGO = new GameObject(name + "_Canvas");
@@ -1384,8 +1429,8 @@ namespace AeroBloom
                 p.GlobeBlue     = M("Globe Blue",    new Color(0.10f, 0.48f, 1f,  0.88f), 0.06f, 0.94f, true,  new Color(0f,    0.28f, 0.80f));
                 p.Bubble        = M("Bubble",        new Color(0.88f, 1f,   1f,  0.22f),  0.04f, 1f,    true,  new Color(0f,    0.14f, 0.22f));
                 p.SignBack      = M("Sign Back",     new Color(0.95f, 1f,   1f,  0.82f),  0.04f, 0.96f, true,  new Color(0.08f, 0.32f, 0.45f));
-                p.AeroBuilding  = M("Bldg Body",     new Color(0.97f, 0.99f, 1f,  1f),    0.08f, 0.96f, false, new Color(0.06f, 0.20f, 0.42f));
-                p.AeroBuildingWindow = M("Bldg Win", new Color(0.16f, 0.68f, 1f,  0.76f), 0.06f, 1.00f, true,  new Color(0.05f, 0.62f, 1.30f));
+                p.AeroBuilding  = M("Bldg Body",     new Color(0.55f, 0.74f, 1f,  1f),    0.10f, 0.80f, false, new Color(0.01f, 0.10f, 0.60f));
+                p.AeroBuildingWindow = M("Bldg Win", new Color(0.08f, 0.58f, 1f,  0.64f), 0.04f, 1.00f, true,  new Color(0.04f, 0.72f, 2.00f));
                 p.Chrome        = M("Chrome",        new Color(0.80f, 0.84f, 0.90f,1f),   1f,    1f,    false, Color.black);
                 p.EmissiveCyan  = M("Emissive Cyan", new Color(0f,    1f,   1f,  1f),     0f,    0.92f, false, new Color(0f,    3.2f,  3.5f));
                 p.EmissiveLime  = M("Emissive Lime", new Color(0.72f, 1f,   0.72f,1f),    0f,    0.92f, false, new Color(0.65f, 2.5f,  0.65f));
