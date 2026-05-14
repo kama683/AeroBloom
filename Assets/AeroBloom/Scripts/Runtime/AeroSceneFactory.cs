@@ -41,7 +41,7 @@ namespace AeroBloom
 
             Palette p = Palette.Create();
             RemoveTemplateSceneObjects(root);
-            SetupEnvironment(envRoot, p);
+            SetupEnvironment(envRoot);
             CreateGroundPlane(envRoot, p, pack);
             CreateAmbientParticles(vfxRoot);
             CreateSoapBubbles(vfxRoot, p);
@@ -69,39 +69,47 @@ namespace AeroBloom
         // ─────────────────────────────────────────────
         // ENVIRONMENT
         // ─────────────────────────────────────────────
-        private static void SetupEnvironment(Transform root, Palette p)
+        private static void SetupEnvironment(Transform root)
         {
-            // Frutiger Aero — bright clear blue sky, no fog
             RenderSettings.fog = false;
 
-            RenderSettings.ambientMode  = AmbientMode.Flat;
-            RenderSettings.ambientLight = new Color(0.82f, 0.92f, 1f);
+            // Skybox ambient — Unity samples the procedural skybox for ambient automatically
+            RenderSettings.ambientMode = AmbientMode.Skybox;
 
             Shader skyShader = Shader.Find("Skybox/Procedural");
             if (skyShader != null)
             {
                 Material sky = new Material(skyShader);
-                sky.SetColor("_SkyTint",     new Color(0.18f, 0.60f, 1f));   // vibrant Frutiger blue
-                sky.SetColor("_GroundColor", new Color(0.22f, 0.55f, 0.78f)); // blue-teal horizon
-                sky.SetFloat("_AtmosphereThickness", 1.1f);  // thin — no orange tint
-                sky.SetFloat("_Exposure",  1.05f);
-                sky.SetFloat("_SunDisk",   2f);
-                sky.SetFloat("_SunSize",   0.05f);
+                sky.SetColor("_SkyTint",     new Color(0.07f, 0.44f, 0.92f));
+                sky.SetColor("_GroundColor", new Color(0.10f, 0.38f, 0.65f));
+                sky.SetFloat("_AtmosphereThickness", 0.78f);
+                sky.SetFloat("_Exposure",            1.22f);
+                sky.SetFloat("_SunDisk",             2f);
+                sky.SetFloat("_SunSize",             0.04f);
+                sky.SetFloat("_SunSizeConvergence",  8f);
                 RenderSettings.skybox = sky;
+                DynamicGI.UpdateEnvironment();
             }
 
+            // Main sun — warm, high-intensity, sharp soft shadows
             GameObject sunGO = new GameObject("Directional Light");
             sunGO.transform.SetParent(root, false);
-            sunGO.transform.rotation = Quaternion.Euler(55f, -30f, 0f);
+            sunGO.transform.rotation = Quaternion.Euler(50f, -28f, 0f);
             Light sun = sunGO.AddComponent<Light>();
-            sun.type      = LightType.Directional;
-            sun.color     = new Color(1f, 0.98f, 0.94f);
-            sun.intensity = 1.2f;
-            sun.shadows   = LightShadows.Soft;
+            sun.type             = LightType.Directional;
+            sun.color            = new Color(1f, 0.97f, 0.90f);
+            sun.intensity        = 1.55f;
+            sun.shadows          = LightShadows.Soft;
+            sun.shadowStrength   = 0.78f;
+            sun.shadowBias       = 0.015f;
+            sun.shadowNormalBias = 0.35f;
 
-            SpawnPointLight(root, "AtmosA", new Vector3(-80f, 40f, 200f), new Color(0f,   0.83f, 1f),   2f, 120f);
-            SpawnPointLight(root, "AtmosB", new Vector3(250f, 60f, 450f), new Color(0.4f, 1f,   0.6f),  2f, 140f);
+            // Sky fill + atmosphere accent lights
+            SpawnPointLight(root, "FillSky", new Vector3(  0f, 120f, 380f), new Color(0.28f, 0.62f, 1.00f), 0.55f, 280f);
+            SpawnPointLight(root, "AtmosA",  new Vector3(-80f,  40f, 200f), new Color(0.00f, 0.82f, 1.00f), 2.4f,  140f);
+            SpawnPointLight(root, "AtmosB",  new Vector3(250f,  60f, 450f), new Color(0.40f, 1.00f, 0.60f), 2.4f,  160f);
 
+            // ── Post-processing ────────────────────────────────────────
             GameObject volGO = new GameObject("Aero Post FX");
             volGO.transform.SetParent(root, false);
             Volume vol = volGO.AddComponent<Volume>();
@@ -109,19 +117,66 @@ namespace AeroBloom
             VolumeProfile prof = ScriptableObject.CreateInstance<VolumeProfile>();
             vol.sharedProfile = prof;
 
-            Bloom bloom = prof.Add<Bloom>(true);
-            bloom.threshold.Override(0.70f);
-            bloom.intensity.Override(0.6f);
-            bloom.scatter.Override(0.5f);
+            // ACES tonemapping — cinematic, punchy contrast
+            var tone = prof.Add<Tonemapping>(true);
+            tone.mode.Override(TonemappingMode.ACES);
 
-            ColorAdjustments ca = prof.Add<ColorAdjustments>(true);
-            ca.saturation.Override(28f);
-            ca.contrast.Override(8f);
-            ca.colorFilter.Override(new Color(0.96f, 1f, 1f));
+            // Bloom — characteristic Frutiger glow on emissive surfaces
+            var bloom = prof.Add<Bloom>(true);
+            bloom.threshold.Override(0.58f);
+            bloom.intensity.Override(1.4f);
+            bloom.scatter.Override(0.62f);
+            bloom.tint.Override(new Color(0.82f, 0.95f, 1f));
+            bloom.highQualityFiltering.Override(true);
 
-            Vignette vig = prof.Add<Vignette>(true);
-            vig.intensity.Override(0.10f);
-            vig.smoothness.Override(0.5f);
+            // Color grading — vivid, slightly cool, high clarity
+            var ca = prof.Add<ColorAdjustments>(true);
+            ca.postExposure.Override(0.22f);
+            ca.contrast.Override(14f);
+            ca.colorFilter.Override(new Color(0.93f, 0.98f, 1.04f));
+            ca.saturation.Override(36f);
+
+            // White balance — cool Frutiger Aero temperature
+            var wb = prof.Add<WhiteBalance>(true);
+            wb.temperature.Override(-10f);
+            wb.tint.Override(3f);
+
+            // Fine color grading — push blues into shadows and highlights
+            var lgg = prof.Add<LiftGammaGain>(true);
+            lgg.lift.Override(new Vector4(0.98f, 0.99f, 1.02f, 0f));
+            lgg.gamma.Override(new Vector4(0.97f, 0.99f, 1.04f, 0f));
+            lgg.gain.Override(new Vector4(0.95f, 0.97f, 1.06f, 0f));
+
+            // Shadows / Midtones / Highlights
+            var smt = prof.Add<ShadowsMidtonesHighlights>(true);
+            smt.shadows.Override(new Vector4(1.00f, 1.01f, 1.05f, 0f));
+            smt.midtones.Override(new Vector4(0.98f, 1.00f, 1.03f, 0f));
+            smt.highlights.Override(new Vector4(0.95f, 0.97f, 1.06f, 0f));
+
+            // Chromatic aberration — subtle glass/lens refraction feel
+            var chrom = prof.Add<ChromaticAberration>(true);
+            chrom.intensity.Override(0.10f);
+
+            // Vignette — draws eye to centre of screen
+            var vig = prof.Add<Vignette>(true);
+            vig.color.Override(new Color(0.02f, 0.05f, 0.14f));
+            vig.intensity.Override(0.26f);
+            vig.smoothness.Override(0.38f);
+            vig.rounded.Override(true);
+
+            // Film grain — very subtle, adds tactile texture
+            var grain = prof.Add<FilmGrain>(true);
+            grain.type.Override(FilmGrainLookup.Medium1);
+            grain.intensity.Override(0.06f);
+            grain.response.Override(0.85f);
+
+            // Depth of field — blurs only distant background (>90 m), foreground sharp
+            var dof = prof.Add<DepthOfField>(true);
+            dof.mode.Override(DepthOfFieldMode.Gaussian);
+            dof.gaussianStart.Override(90f);
+            dof.gaussianEnd.Override(220f);
+            dof.gaussianMaxRadius.Override(1.2f);
+            dof.highQualitySampling.Override(true);
         }
 
         private static void CreateGroundPlane(Transform root, Palette p, AeroPackConfig pack)
@@ -177,7 +232,9 @@ namespace AeroBloom
             vel.x = new ParticleSystem.MinMaxCurve(-0.06f, 0.06f);
             vel.z = new ParticleSystem.MinMaxCurve(-0.06f, 0.06f);
 
-            psGO.GetComponent<ParticleSystemRenderer>().shadowCastingMode = ShadowCastingMode.Off;
+            var psr = psGO.GetComponent<ParticleSystemRenderer>();
+            psr.shadowCastingMode = ShadowCastingMode.Off;
+            psr.material = MakeParticleMat(new Color(1f, 1f, 1f, 0.35f));
         }
 
         private static void CreateSoapBubbles(Transform root, Palette p)
@@ -216,40 +273,47 @@ namespace AeroBloom
             Material wallMat  = LoadFA("FA_BuildingWall");  if (wallMat  == null) wallMat  = p.AeroBuilding;
             Material glassMat = LoadFA("FA_BuildingGlass"); if (glassMat == null) glassMat = p.AeroBuildingWindow;
 
-            // Left tower cluster x=-180 to -70  (always procedural — pack prefabs can have URP shader issues)
-            for (int i = 0; i < 14; i++)
+            // Left cluster  x = -185 … -75
+            for (int i = 0; i < 18; i++)
             {
-                float bx  = -180f + (float)r.NextDouble() * 110f;
-                float bz  = (float)r.NextDouble() * 750f;
-                float h   = 50f + RF(r, 80f);
-                float w   = 9f  + RF(r, 14f);
-                int   type = (int)(r.NextDouble() * 3);
+                float bx  = -185f + (float)r.NextDouble() * 110f;
+                float bz  = (float)r.NextDouble() * 760f;
+                float h   = 45f + RF(r, 115f);
+                float w   = 8f  + RF(r, 16f);
                 float yaw = (float)r.NextDouble() * 360f;
                 ProceduralBuilding(root, "PL" + i, new Vector3(bx, h * 0.5f - 5f, bz),
-                    new Vector3(w, h, w), Quaternion.Euler(0, yaw, 0), type, wallMat, glassMat, p);
+                    new Vector3(w, h, w), Quaternion.Euler(0, yaw, 0), i % 5, wallMat, glassMat, p);
             }
 
-            // Right tower cluster x=70 to 180
-            for (int i = 0; i < 14; i++)
+            // Right cluster  x = 75 … 185
+            for (int i = 0; i < 18; i++)
             {
-                float bx  = 70f + (float)r.NextDouble() * 110f;
-                float bz  = (float)r.NextDouble() * 750f;
-                float h   = 50f + RF(r, 80f);
-                float w   = 9f  + RF(r, 14f);
-                int   type = (int)(r.NextDouble() * 3);
+                float bx  = 75f + (float)r.NextDouble() * 110f;
+                float bz  = (float)r.NextDouble() * 760f;
+                float h   = 45f + RF(r, 115f);
+                float w   = 8f  + RF(r, 16f);
                 float yaw = (float)r.NextDouble() * 360f;
                 ProceduralBuilding(root, "PR" + i, new Vector3(bx, h * 0.5f - 5f, bz),
-                    new Vector3(w, h, w), Quaternion.Euler(0, yaw, 0), type, wallMat, glassMat, p);
+                    new Vector3(w, h, w), Quaternion.Euler(0, yaw, 0), (i + 2) % 5, wallMat, glassMat, p);
             }
 
-            // Floating chrome deco spheres (fewer, only near level)
+            // Landmark hero towers — dominate the skyline
+            ProceduralBuilding(root, "HeroL", new Vector3(-135f, 110f - 5f, 370f),
+                new Vector3(20f, 220f, 20f), Quaternion.identity, 4, wallMat, glassMat, p);
+            ProceduralBuilding(root, "HeroR", new Vector3( 135f,  95f - 5f, 370f),
+                new Vector3(18f, 190f, 18f), Quaternion.identity, 1, wallMat, glassMat, p);
+            // HeroC moved to x=85 so it doesn't overlap the z=764 finish area (was at x=0)
+            ProceduralBuilding(root, "HeroC", new Vector3(  85f,  80f - 5f, 760f),
+                new Vector3(22f, 160f, 22f), Quaternion.identity, 3, wallMat, glassMat, p);
+
+            // Chrome floating deco spheres
             Material chromeMat = LoadFA("FA_Chrome"); if (chromeMat == null) chromeMat = p.Chrome;
-            for (int i = 0; i < 12; i++)
+            for (int i = 0; i < 18; i++)
             {
-                float sx = (float)(r.NextDouble() - 0.5) * 300f;
-                float sz = (float)r.NextDouble() * 650f;
-                float sy = 20f + RF(r, 40f);
-                float sc = 2f  + RF(r, 4f);
+                float sx = (float)(r.NextDouble() - 0.5) * 320f;
+                float sz = (float)r.NextDouble() * 700f;
+                float sy = 18f + RF(r, 55f);
+                float sc = 1.5f + RF(r, 4.5f);
                 MakeSphere(root, "DecoSphere" + i, new Vector3(sx, sy, sz), sc, chromeMat, false);
             }
         }
@@ -257,45 +321,189 @@ namespace AeroBloom
         private static void ProceduralBuilding(Transform parent, string name,
             Vector3 pos, Vector3 size, Quaternion rot, int type, Material wall, Material glass, Palette p)
         {
-            Material bodyMat = LoadFA("FA_GlossyWhite"); if (bodyMat == null) bodyMat = p.AeroBuilding;
+            Material bodyMat  = LoadFA("FA_GlossyWhite");  if (bodyMat  == null) bodyMat  = p.AeroBuilding;
+            Material glassMat = LoadFA("FA_BuildingGlass"); if (glassMat == null) glassMat = p.AeroBuildingWindow;
+            Material eMat     = LoadFA("FA_EmissiveCyan");  if (eMat     == null) eMat     = p.EmissiveCyan;
+            Material chromMat = LoadFA("FA_Chrome");        if (chromMat == null) chromMat = p.Chrome;
 
+            float hh = size.y * 0.5f;
+
+            // Container at building centre
+            GameObject tower = new GameObject(name);
+            tower.transform.SetParent(parent, false);
+            tower.transform.position = pos;
+            tower.transform.rotation = rot;
+
+            // ── Main body ─────────────────────────────────────────────
             GameObject body = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            body.name = name;
-            body.transform.SetParent(parent, false);
-            body.transform.position   = pos;
-            body.transform.rotation   = rot;
-            body.transform.localScale = size;
+            body.name = "Body";
+            body.transform.SetParent(tower.transform, false);
+            body.transform.localPosition = Vector3.zero;
+            body.transform.localScale    = size;
             AssignMat(body, bodyMat);
             DestroyCollider(body);
 
-            Material winBand = LoadFA("FA_BuildingGlass"); if (winBand == null) winBand = p.AeroBuildingWindow;
-            float bandStep   = Mathf.Max(3.5f, size.y / Mathf.Max(1f, Mathf.Round(size.y / 3.5f)));
-            float bandHeight = bandStep * 0.55f;
-            for (float wy = -size.y * 0.48f + bandStep; wy < size.y * 0.48f; wy += bandStep)
+            // ── Horizontal window bands ───────────────────────────────
+            float bStep = Mathf.Clamp(size.y / Mathf.Max(1f, Mathf.Round(size.y / 4f)), 3f, 6f);
+            float bH    = bStep * 0.52f;
+            for (float ly = -hh + bStep; ly < hh; ly += bStep)
             {
-                GameObject wns = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                wns.name = "Win";
-                wns.transform.SetParent(body.transform, false);
-                wns.transform.localPosition = new Vector3(0f, wy / size.y, 0f);
-                wns.transform.localScale    = new Vector3(1.002f, bandHeight / size.y, 1.002f);
-                AssignMat(wns, winBand);
-                DestroyCollider(wns);
+                GameObject win = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                win.name = "Win";
+                win.transform.SetParent(body.transform, false);
+                win.transform.localPosition = new Vector3(0f, ly / size.y, 0f);
+                win.transform.localScale    = new Vector3(1.003f, bH / size.y, 1.003f);
+                AssignMat(win, glassMat);
+                DestroyCollider(win);
             }
 
-            if (size.y > 50f)
+            // ── Emissive cyan trim every ~16 m ────────────────────────
+            float tStep = Mathf.Clamp(size.y / Mathf.Max(1f, Mathf.Floor(size.y / 16f)), 12f, 22f);
+            for (float ly = -hh + tStep * 0.5f; ly < hh; ly += tStep)
             {
-                Material trimMat = LoadFA("FA_EmissiveCyan"); if (trimMat == null) trimMat = p.EmissiveCyan;
-                for (float ty = 25f; ty < size.y - 5f; ty += 28f)
-                {
-                    GameObject trim = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                    trim.name = "Trim";
-                    trim.transform.SetParent(body.transform, false);
-                    trim.transform.localPosition = new Vector3(0f, (ty - size.y * 0.5f) / size.y, 0f);
-                    trim.transform.localScale    = new Vector3(1.04f, 0.05f / size.y, 1.04f);
-                    AssignMat(trim, trimMat);
-                    DestroyCollider(trim);
-                }
+                GameObject et = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                et.name = "ETrim";
+                et.transform.SetParent(body.transform, false);
+                et.transform.localPosition = new Vector3(0f, ly / size.y, 0f);
+                et.transform.localScale    = new Vector3(1.008f, 0.22f / size.y, 1.008f);
+                AssignMat(et, eMat);
+                DestroyCollider(et);
             }
+
+            // Top edge always glows
+            GameObject topEdge = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            topEdge.name = "TopEdge";
+            topEdge.transform.SetParent(body.transform, false);
+            topEdge.transform.localPosition = new Vector3(0f, 0.502f, 0f);
+            topEdge.transform.localScale    = new Vector3(1.012f, 0.28f / size.y, 1.012f);
+            AssignMat(topEdge, eMat);
+            DestroyCollider(topEdge);
+
+            // ── Type-specific tops ────────────────────────────────────
+            switch (type % 5)
+            {
+                case 1: // Setback block + antenna
+                {
+                    float sbW = size.x * 0.58f;
+                    float sbH = size.y * 0.26f;
+                    GameObject sb = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                    sb.name = "Setback";
+                    sb.transform.SetParent(tower.transform, false);
+                    sb.transform.localPosition = new Vector3(0f, hh + sbH * 0.5f, 0f);
+                    sb.transform.localScale    = new Vector3(sbW, sbH, sbW);
+                    AssignMat(sb, bodyMat);
+                    DestroyCollider(sb);
+
+                    // Window bands on setback
+                    for (float ly = -sbH * 0.38f; ly < sbH * 0.4f; ly += sbH * 0.32f)
+                    {
+                        GameObject sw = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                        sw.name = "SbWin";
+                        sw.transform.SetParent(sb.transform, false);
+                        sw.transform.localPosition = new Vector3(0f, ly / sbH, 0f);
+                        sw.transform.localScale    = new Vector3(1.003f, 0.38f, 1.003f);
+                        AssignMat(sw, glassMat);
+                        DestroyCollider(sw);
+                    }
+
+                    // Emissive collar between body and setback
+                    GameObject collar = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                    collar.name = "Collar";
+                    collar.transform.SetParent(tower.transform, false);
+                    collar.transform.localPosition = new Vector3(0f, hh + 0.18f, 0f);
+                    collar.transform.localScale    = new Vector3(size.x + 0.55f, 0.36f, size.x + 0.55f);
+                    AssignMat(collar, eMat);
+                    DestroyCollider(collar);
+
+                    // Antenna
+                    GameObject ant = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+                    ant.name = "Antenna";
+                    ant.transform.SetParent(tower.transform, false);
+                    ant.transform.localPosition = new Vector3(0f, hh + sbH + size.y * 0.055f, 0f);
+                    ant.transform.localScale    = new Vector3(0.22f, size.y * 0.055f, 0.22f);
+                    AssignMat(ant, chromMat);
+                    DestroyCollider(ant);
+                    break;
+                }
+
+                case 2: // Stepped pyramid — 2 shrinking blocks
+                {
+                    for (int s = 1; s <= 2; s++)
+                    {
+                        float f  = 1f - s * 0.28f;
+                        float sH = size.y * 0.17f;
+                        GameObject step = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                        step.name = "Step" + s;
+                        step.transform.SetParent(tower.transform, false);
+                        step.transform.localPosition = new Vector3(0f, hh + (s - 0.5f) * sH, 0f);
+                        step.transform.localScale    = new Vector3(size.x * f, sH, size.x * f);
+                        AssignMat(step, bodyMat);
+                        DestroyCollider(step);
+
+                        GameObject strim = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                        strim.name = "STrim";
+                        strim.transform.SetParent(tower.transform, false);
+                        strim.transform.localPosition = new Vector3(0f, hh + (s - 1f) * sH, 0f);
+                        strim.transform.localScale    = new Vector3(size.x * f + 0.42f, 0.30f, size.x * f + 0.42f);
+                        AssignMat(strim, eMat);
+                        DestroyCollider(strim);
+                    }
+                    break;
+                }
+
+                case 3: // Glass sphere dome
+                {
+                    float dR = size.x * 0.62f;
+                    GameObject dome = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                    dome.name = "Dome";
+                    dome.transform.SetParent(tower.transform, false);
+                    dome.transform.localPosition = new Vector3(0f, hh + dR * 0.52f, 0f);
+                    dome.transform.localScale    = Vector3.one * dR;
+                    AssignMat(dome, glassMat);
+                    DestroyCollider(dome);
+
+                    // Emissive ring at dome base
+                    GameObject ring = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+                    ring.name = "DomeRing";
+                    ring.transform.SetParent(tower.transform, false);
+                    ring.transform.localPosition = new Vector3(0f, hh + 0.18f, 0f);
+                    ring.transform.localScale    = new Vector3(dR * 2.3f, 0.12f, dR * 2.3f);
+                    AssignMat(ring, eMat);
+                    DestroyCollider(ring);
+                    break;
+                }
+
+                case 4: // Chrome spire with glowing tip
+                {
+                    float spH = size.y * 0.20f;
+                    GameObject spire = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+                    spire.name = "Spire";
+                    spire.transform.SetParent(tower.transform, false);
+                    spire.transform.localPosition = new Vector3(0f, hh + spH, 0f);
+                    spire.transform.localScale    = new Vector3(0.35f, spH, 0.35f);
+                    AssignMat(spire, chromMat);
+                    DestroyCollider(spire);
+
+                    GameObject tip = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                    tip.name = "SpireTip";
+                    tip.transform.SetParent(tower.transform, false);
+                    tip.transform.localPosition = new Vector3(0f, hh + spH * 2f + 0.6f, 0f);
+                    tip.transform.localScale    = Vector3.one * 1.3f;
+                    AssignMat(tip, eMat);
+                    DestroyCollider(tip);
+
+                    SpawnPointLight(tower.transform, "SpireGlow",
+                        new Vector3(0f, hh + spH * 2f + 1f, 0f),
+                        new Color(0f, 0.85f, 1f), 1.5f, 22f);
+                    break;
+                }
+                // case 0: plain top — only the top edge trim above
+            }
+
+            // Top glow point light (all building types)
+            SpawnPointLight(tower.transform, "TopGlow",
+                new Vector3(0f, hh + 4f, 0f),
+                new Color(0.15f, 0.62f, 1f), 0.40f, 28f);
         }
 
         // ─────────────────────────────────────────────
@@ -338,7 +546,7 @@ namespace AeroBloom
             BoxNoColl(s, "GrassPatchL", new Vector3(-12f, -0.05f, 30f), new Vector3(8f, 0.1f, 20f), limeE);
             BoxNoColl(s, "GrassPatchR", new Vector3( 12f, -0.05f, 30f), new Vector3(8f, 0.1f, 20f), limeE);
 
-            Checkpoint(s, "Relay 01 Grassland", new Vector3(0f, 3f, 78f), Quaternion.identity, p, ref cps);
+            Checkpoint(s, "Relay 01 Grassland", new Vector3(0f, 2.8f, 78f), Quaternion.identity, p, ref cps);
         }
 
         // ─────────────────────────────────────────────
@@ -397,8 +605,12 @@ namespace AeroBloom
                 if (i % 2 == 0) AddSeed(s, t.pos + new Vector3(0f, t.shaftH + 2.5f, 0f), dir, p, ref seeds);
             }
 
-            AddSeed(s, new Vector3(0f, 21.5f, 206f), dir, p, ref seeds);
-            Checkpoint(s, "Relay 02 Disc Hops", new Vector3(0f, 19.5f, 210f), Quaternion.identity, p, ref cps);
+            AddSeed(s, new Vector3(0f, 17.5f, 206f), dir, p, ref seeds);
+
+            // Bridge platform: Tower8 top 15.5 m → bridge 17 m (single jump) → Canyon plat1 19 m (single jump)
+            Plat(s, "CanyonBridge", new Vector3(0f, 17f, 213f), new Vector3(8f, 0.5f, 5f), p.BlueSolid);
+            // Relay gate sits ON the bridge platform (bridge top = 17.25 m)
+            Checkpoint(s, "Relay 02 Disc Hops", new Vector3(0f, 17.3f, 213f), Quaternion.identity, p, ref cps);
         }
 
         // ─────────────────────────────────────────────
@@ -425,9 +637,12 @@ namespace AeroBloom
             }
 
             // 10 jumping platforms — start at y≈19 (S2 end), ~2m gain each
+            // Heights: every step ≤ 3 m (double-jump reachable).
+            // X offsets reduced to ≤ 3 m so diagonal distance is never extreme.
+            // Z positions kept original; wide gaps bridged by stepping-stone platforms below.
             float[] cpz = { 222f, 232f, 243f, 254f, 265f, 278f, 291f, 308f, 326f, 345f };
-            float[] cpy = {  19f,  22f,  25f,  23f,  29f,  33f,  28f,  37f,  43f,  48f };
-            float[] cpx = {   0f,   4f,  -4f,   5f,  -5f,   3f,  -3f,   4f,  -2f,   0f };
+            float[] cpy = {  19f,  22f,  25f,  27f,  30f,  32f,  35f,  38f,  41f,  44f };
+            float[] cpx = {   0f,   2f,  -2f,   3f,  -2f,   2f,  -2f,   2f,  -1f,   0f };
             float[] cpw = {   9f,   7f,   7f,   6f,   7f,   6f,   7f,   6f,   7f,  11f };
 
             for (int i = 0; i < cpz.Length; i++)
@@ -437,6 +652,12 @@ namespace AeroBloom
                 if (i == 2 || i == 6)
                     AddSeed(s, new Vector3(cpx[i], cpy[i] + 1.5f, cpz[i]), dir, p, ref seeds);
             }
+
+            // Stepping stones to bridge the wide Z gaps between platforms 7→8, 8→9, 9→10.
+            // Each stone is halfway between the adjacent platforms; gain is 1.5 m (easy single jump).
+            Plat(s, "CanyonStep7b", new Vector3( 0f, 36.5f, 300f), new Vector3(5f, 0.6f, 5.5f), p.CyanSolid);
+            Plat(s, "CanyonStep8b", new Vector3( 1f, 39.5f, 317f), new Vector3(5f, 0.6f, 5.5f), p.BlueSolid);
+            Plat(s, "CanyonStep9b", new Vector3(-1f, 42.5f, 335f), new Vector3(5f, 0.6f, 5.5f), p.CyanSolid);
 
             // Wind zone — gentle lateral push through canyon
             GameObject wz = new GameObject("CanyonWind");
@@ -450,11 +671,11 @@ namespace AeroBloom
             wzs.fluctuate     = true;
 
             // End landing platform
-            Plat(s, "CanyonEnd", new Vector3(0f, 48f, 355f), new Vector3(12f, 0.7f, 9f), p.BlueSolid);
-            BoxNoColl(s, "CanyonEndGlow", new Vector3(0f, 48.4f, 355f), new Vector3(12.5f, 0.15f, 9.5f), limeMat);
+            Plat(s, "CanyonEnd", new Vector3(0f, 46f, 355f), new Vector3(12f, 0.7f, 9f), p.BlueSolid);
+            BoxNoColl(s, "CanyonEndGlow", new Vector3(0f, 46.4f, 355f), new Vector3(12.5f, 0.15f, 9.5f), limeMat);
 
-            Checkpoint(s, "Relay 03 Canyon", new Vector3(0f, 48.8f, 358f), Quaternion.identity, p, ref cps);
-            AddSeed(s, new Vector3(0f, 51f, 356f), dir, p, ref seeds);
+            Checkpoint(s, "Relay 03 Canyon", new Vector3(0f, 46.4f, 358f), Quaternion.identity, p, ref cps);
+            AddSeed(s, new Vector3(0f, 49f, 356f), dir, p, ref seeds);
         }
 
         // ─────────────────────────────────────────────
@@ -521,9 +742,11 @@ namespace AeroBloom
             mm.simulationSpace = ParticleSystemSimulationSpace.World;
             var me = mps.emission; me.rateOverTime = 12f;
             var ms = mps.shape; ms.shapeType = ParticleSystemShapeType.Box; ms.scale = new Vector3(40f, 16f, 110f);
-            mistGO.GetComponent<ParticleSystemRenderer>().shadowCastingMode = ShadowCastingMode.Off;
+            var msr = mistGO.GetComponent<ParticleSystemRenderer>();
+            msr.shadowCastingMode = ShadowCastingMode.Off;
+            msr.material = MakeParticleMat(new Color(0.87f, 0.95f, 1f, 0.10f));
 
-            Checkpoint(s, "Relay 04 Mist", new Vector3(0f, 64.7f, 466f), Quaternion.identity, p, ref cps);
+            Checkpoint(s, "Relay 04 Mist", new Vector3(0f, 64.3f, 466f), Quaternion.identity, p, ref cps);
             AddSeed(s, new Vector3(0f, 66.5f, 465f), dir, p, ref seeds);
         }
 
@@ -604,9 +827,10 @@ namespace AeroBloom
 
             Sign(s, "RunHint", "SPRINT AHEAD!\nUse the Speed Gates!", new Vector3(0f, 82f, 575f), Quaternion.identity, p);
 
-            // Platforms start at y≈79 (S5 end), ~3m gain each
+            // Platforms start at y≈79 (S5 end), 3 m gain each — every step double-jumpable.
+            // Old values had 6–7 m gaps (impossible). Fixed to uniform +3 m progression.
             float[] rz  = { 578f, 592f, 607f, 622f, 636f, 649f, 661f };
-            float[] ry  = {  79f,  82f,  85f,  83f,  89f,  93f, 100f };
+            float[] ry  = {  79f,  82f,  85f,  88f,  91f,  94f,  97f };
             float[] rx  = {   0f,   4f,  -3f,   5f,  -4f,   2f,   0f };
             float[] rw  = {  14f,  12f,  12f,  11f,  12f,  11f,  16f };
             bool[]  rmv = { false, false, true, false, true, false, false };
@@ -658,8 +882,8 @@ namespace AeroBloom
                 MakeSphere(s, "HighSphere" + i, new Vector3(-18f + i * 9f, 86f + i * 2f, 612f + i * 6f),
                     1.5f + i * 0.4f, chromeMat, false);
 
-            Checkpoint(s, "Relay 06 HighRun", new Vector3(0f, 100.6f, 663f), Quaternion.identity, p, ref cps);
-            AddSeed(s, new Vector3(0f, 103f, 663f), dir, p, ref seeds);
+            Checkpoint(s, "Relay 06 HighRun", new Vector3(0f, 97.6f, 663f), Quaternion.identity, p, ref cps);
+            AddSeed(s, new Vector3(0f, 100f, 663f), dir, p, ref seeds);
         }
 
         // ─────────────────────────────────────────────
@@ -674,11 +898,12 @@ namespace AeroBloom
             Material eMat     = LoadFA("FA_EmissiveCyan"); if (eMat     == null) eMat     = p.EmissiveCyan;
             Material whiteMat = LoadFA("FA_GlossyWhite"); if (whiteMat == null) whiteMat = p.AeroBuilding;
 
-            Sign(s, "FinaleHint", "THE SUMMIT IS NEAR!\nJump through the Bubbles!", new Vector3(0f, 103f, 670f), Quaternion.identity, p);
+            Sign(s, "FinaleHint", "THE SUMMIT IS NEAR!\nJump through the Bubbles!", new Vector3(0f, 100f, 670f), Quaternion.identity, p);
 
-            // 11 bubble disc platforms — start at y≈100 (S6 end), 3m gain each (double jump required)
+            // 11 bubble disc platforms — start at y=99 (2.3 m above S6 end, single-jumpable).
+            // Shifted down 2 m from original so S6→S7 transition is not impossible.
             float[] bz = { 674f, 684f, 694f, 704f, 714f, 723f, 732f, 740f, 748f, 755f, 761f };
-            float[] by = { 101f, 104f, 107f, 110f, 113f, 116f, 119f, 122f, 125f, 128f, 131f };
+            float[] by = {  99f, 102f, 105f, 108f, 111f, 114f, 117f, 120f, 123f, 126f, 129f };
             float[] bx = {   0f,   4f,  -4f,   5f,  -5f,   3f,  -3f,   4f,  -2f,   1f,   0f };
             float[] br = { 4.5f, 4.0f, 4.5f, 4.0f, 5.0f, 4.0f, 4.5f, 4.0f, 4.5f, 4.0f, 5.5f };
 
@@ -716,14 +941,20 @@ namespace AeroBloom
                     new Color(0.15f + i * 0.08f, 0.8f, 1f), 1.3f, 20f);
 
                 if (i % 3 == 0)
-                    AddSeed(s, new Vector3(bx[i], by[i] + 3f, bz[i]), dir, p, ref seeds);
+                    AddSeed(s, new Vector3(bx[i], by[i] + 1.5f, bz[i]), dir, p, ref seeds);
             }
 
             // ── FINISH PLATFORM ──
-            const float finishY = 135f;  // 4m above last bubble at 131
-            const float finishZ = 764f;
+            // Steps approach from the side so the player never needs to jump through a ceiling.
+            // Bubble10 top=129.3 → Step1 top=130.8 (+1.5m) → Step2 top=132.8 (+2m) → Finish top=134.3 (+1.5m)
+            // All gains ≤ 2m (single-jump max). Side approach = no ceiling collision.
+            const float finishY = 134f;
+            const float finishZ = 782f;
 
-            Plat(s, "FinishPlatform", new Vector3(0f, finishY, finishZ), new Vector3(20f, 2f, 20f), whiteMat);
+            Plat(s, "SummitStep1", new Vector3(0f, 130.5f, 769f), new Vector3(7f, 0.6f, 7f), p.CyanSolid);
+            Plat(s, "SummitStep2", new Vector3(0f, 132.5f, 776f), new Vector3(7f, 0.6f, 7f), p.BlueSolid);
+
+            Plat(s, "FinishPlatform", new Vector3(0f, finishY, finishZ), new Vector3(20f, 0.6f, 20f), whiteMat);
 
             // Gold edge trim (BoxChild uses localPos relative to section at world 0,0,0)
             BoxChild(s, "GoldN", new Vector3(  0f,      finishY + 1.2f, finishZ + 10.3f), new Vector3(20.6f, 0.4f, 0.4f), goldMat);
@@ -754,6 +985,9 @@ namespace AeroBloom
                 fpsEmit.rateOverTime = 0f;
                 fpsEmit.SetBursts(new[] { new ParticleSystem.Burst(0f, 600) });
                 var fsh = fps.shape; fsh.shapeType = ParticleSystemShapeType.Sphere; fsh.radius = 0.5f;
+                var fwr = fw.GetComponent<ParticleSystemRenderer>();
+                fwr.shadowCastingMode = ShadowCastingMode.Off;
+                fwr.material = MakeParticleMat(new Color(0f, 1f, 1f, 0.9f));
                 fps.Stop();
             }
 
@@ -768,8 +1002,6 @@ namespace AeroBloom
             Sign(s, "Victory", "YOU REACHED\nTHE SUMMIT!\nAeroBloom Complete!", new Vector3(0f, finishY + 5f, finishZ - 11f), Quaternion.identity, p);
 
             Checkpoint(s, "Relay 07 Finale", new Vector3(0f, finishY + 1.2f, finishZ), Quaternion.identity, p, ref cps);
-            AddSeed(s, new Vector3( 4f, finishY + 3.5f, finishZ + 4f), dir, p, ref seeds);
-            AddSeed(s, new Vector3(-4f, finishY + 3.5f, finishZ - 4f), dir, p, ref seeds);
         }
 
         // ─────────────────────────────────────────────
@@ -863,6 +1095,17 @@ namespace AeroBloom
                 fp.transform.localPosition = Vector3.zero;
             }
 
+            // SMAA anti-aliasing + post-processing on the game camera
+            if (player.playerCamera != null)
+            {
+                var camData = player.playerCamera.gameObject.GetComponent<UniversalAdditionalCameraData>();
+                if (camData == null)
+                    camData = player.playerCamera.gameObject.AddComponent<UniversalAdditionalCameraData>();
+                camData.antialiasing        = AntialiasingMode.SubpixelMorphologicalAntiAliasing;
+                camData.antialiasingQuality = AntialiasingQuality.High;
+                camData.renderPostProcessing = true;
+            }
+
             return player;
         }
 
@@ -947,6 +1190,9 @@ namespace AeroBloom
             seed.transform.position   = worldPos;
             seed.transform.localScale = Vector3.one * 0.72f;
             AssignMat(seed, p.Seed);
+            SphereCollider sc = seed.GetComponent<SphereCollider>();
+            sc.isTrigger = true;
+            sc.radius = 1.2f;
 
             AeroCollectible col = seed.AddComponent<AeroCollectible>();
             col.director = dir;
@@ -961,23 +1207,32 @@ namespace AeroBloom
             var back = Plat(root, name + "_Back", pos, new Vector3(5.6f, 2.4f, 0.14f), rot, p.SignBack);
             DestroyCollider(back);
 
-            GameObject tGO = new GameObject(name + "_Text");
-            tGO.transform.SetParent(root, false);
+            // World-space Canvas: 100 canvas units = 1 world metre (scale 0.01)
+            GameObject canvasGO = new GameObject(name + "_Canvas");
+            canvasGO.transform.SetParent(root, false);
+            canvasGO.transform.SetPositionAndRotation(pos + rot * new Vector3(0f, 0f, -0.09f), rot);
+            canvasGO.transform.localScale = Vector3.one * 0.01f;
 
-            // Add TMP before setting position — AddComponent replaces Transform with RectTransform
-            TextMeshPro tmp = tGO.AddComponent<TextMeshPro>();
+            Canvas canvas = canvasGO.AddComponent<Canvas>();
+            canvas.renderMode = RenderMode.WorldSpace;
 
-            // Use world-space setters AFTER the component is attached
-            tmp.rectTransform.position = pos + rot * new Vector3(0f, 0f, -0.09f);
-            tmp.rectTransform.rotation = rot;
-            tmp.rectTransform.sizeDelta = new Vector2(5.2f, 2.1f);
+            RectTransform crt = canvasGO.GetComponent<RectTransform>();
+            crt.sizeDelta = new Vector2(520f, 210f);   // 5.20 m × 2.10 m
+
+            GameObject textGO = new GameObject("TMP");
+            textGO.transform.SetParent(canvasGO.transform, false);
+
+            TextMeshProUGUI tmp = textGO.AddComponent<TextMeshProUGUI>();
+            RectTransform trt   = tmp.rectTransform;
+            trt.anchorMin        = Vector2.zero;
+            trt.anchorMax        = Vector2.one;
+            trt.sizeDelta        = Vector2.zero;
+            trt.anchoredPosition = Vector2.zero;
 
             tmp.text             = text;
             tmp.alignment        = TextAlignmentOptions.Center;
             tmp.color            = new Color(0.02f, 0.16f, 0.30f);
             tmp.fontStyle        = FontStyles.Bold;
-            tmp.textWrappingMode = TextWrappingModes.Normal;
-            tmp.overflowMode     = TextOverflowModes.Truncate;
             tmp.enableAutoSizing = true;
             tmp.fontSizeMin      = 10f;
             tmp.fontSizeMax      = 90f;
@@ -1040,6 +1295,22 @@ namespace AeroBloom
 
         private static float RF(System.Random r, float range) => (float)(r.NextDouble() * range);
 
+        private static Material MakeParticleMat(Color col)
+        {
+            Shader sh = Shader.Find("Universal Render Pipeline/Particles/Unlit");
+            if (sh == null) sh = Shader.Find("Universal Render Pipeline/Unlit");
+            if (sh == null) sh = Shader.Find("Unlit/Color");
+            Material m = new Material(sh != null ? sh : Shader.Find("Standard")) { name = "ParticleMat" };
+            if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", col); else m.color = col;
+            if (m.HasProperty("_Surface")) m.SetFloat("_Surface", 1f);
+            m.SetInt("_SrcBlend", (int)BlendMode.SrcAlpha);
+            m.SetInt("_DstBlend", (int)BlendMode.OneMinusSrcAlpha);
+            m.SetInt("_ZWrite",  0);
+            m.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+            m.renderQueue = (int)RenderQueue.Transparent;
+            return m;
+        }
+
         // ─────────────────────────────────────────────
         // SCENE CLEANUP
         // ─────────────────────────────────────────────
@@ -1101,23 +1372,23 @@ namespace AeroBloom
                 p.Water         = M("Water",         new Color(0.18f, 0.62f, 0.88f,0.30f),0.02f, 1f,   true,  new Color(0f,    0.12f, 0.24f));
                 p.Grass         = M("Aero Grass",    new Color(0.38f, 0.78f, 0.52f,0.55f),0.02f, 0.72f, true,  new Color(0.01f, 0.12f, 0.08f));
                 p.Ground        = M("Ground",        new Color(0.78f, 0.96f, 1f,  1f),    0.1f,  0.7f,  false, Color.black);
-                p.Seed          = M("Aero Seed",     new Color(0.84f, 1f,   0.92f,0.96f), 0f,   0.98f, true,  new Color(0.42f, 2.4f,  1.4f));
-                p.Pad           = M("Bounce Pad",    new Color(0.82f, 1f,   1f,  0.92f),  0.02f, 0.97f, true,  new Color(0.18f, 1.0f,  1.5f));
-                p.RelayInactive = M("Relay Off",     new Color(0.78f, 0.94f, 1f,  0.62f), 0.08f, 0.88f, true,  new Color(0f,    0.14f, 0.26f));
-                p.RelayActive   = M("Relay On",      new Color(0.68f, 1f,   0.80f,0.90f), 0.02f, 0.98f, true,  new Color(0.32f, 1.8f,  0.72f));
-                p.Finish        = M("Bloom Finish",  new Color(1f,    0.9f, 0.4f, 0.94f), 0.5f,  0.9f,  false, new Color(1f,    0.7f,  0.1f));
+                p.Seed          = M("Aero Seed",     new Color(0.84f, 1f,   0.92f,0.96f), 0f,    0.98f, true,  new Color(0.55f, 3.5f,  2.0f));
+                p.Pad           = M("Bounce Pad",    new Color(0.82f, 1f,   1f,  0.92f),  0.02f, 0.98f, true,  new Color(0.20f, 1.4f,  1.8f));
+                p.RelayInactive = M("Relay Off",     new Color(0.78f, 0.94f, 1f,  0.62f), 0.08f, 0.92f, true,  new Color(0f,    0.18f, 0.32f));
+                p.RelayActive   = M("Relay On",      new Color(0.68f, 1f,   0.80f,0.90f), 0.02f, 0.98f, true,  new Color(0.42f, 2.8f,  1.0f));
+                p.Finish        = M("Bloom Finish",  new Color(1f,    0.9f, 0.4f, 0.94f), 0.5f,  0.92f, false, new Color(1.2f,  0.85f, 0.12f));
                 // Solid opaque platform materials
-                p.CyanSolid     = M("Cyan Solid",    new Color(0.0f,  0.72f, 1f,  1f),    0.15f, 0.85f, false, new Color(0f,    0.48f, 1.0f));
-                p.BlueSolid     = M("Blue Solid",    new Color(0.0f,  0.55f, 1f,  1f),    0.15f, 0.85f, false, new Color(0f,    0.28f, 0.8f));
-                p.LimeSolid     = M("Lime Solid",    new Color(0.32f, 0.95f, 0.36f,1f),   0.06f, 0.72f, false, new Color(0.06f, 0.52f, 0.08f));
-                p.GlobeBlue     = M("Globe Blue",    new Color(0.10f, 0.48f, 1f,  0.88f), 0.06f, 0.92f, true,  new Color(0f,    0.22f, 0.65f));
-                p.Bubble        = M("Bubble",        new Color(0.88f, 1f,   1f,  0.22f),  0.02f, 1f,   true,  new Color(0f,    0.10f, 0.18f));
-                p.SignBack      = M("Sign Back",     new Color(0.95f, 1f,   1f,  0.78f),  0.04f, 0.94f, true,  new Color(0.08f, 0.28f, 0.38f));
-                p.AeroBuilding  = M("Bldg Body",     new Color(0.96f, 0.99f, 1f,  1f),    0.05f, 0.95f, false, new Color(0.06f, 0.18f, 0.38f));
-                p.AeroBuildingWindow = M("Bldg Win", new Color(0.22f, 0.68f, 1f,  0.72f), 0.02f, 0.99f, true,  new Color(0.04f, 0.42f, 1.0f));
-                p.Chrome        = M("Chrome",        new Color(0.75f, 0.78f, 0.82f,1f),   1f,    1f,   false, Color.black);
-                p.EmissiveCyan  = M("Emissive Cyan", new Color(0f,    1f,   1f,  1f),     0f,    0.8f,  false, new Color(0f,    2f,    2f));
-                p.EmissiveLime  = M("Emissive Lime", new Color(0.67f, 1f,   0.67f,1f),    0f,    0.8f,  false, new Color(0.5f,  1.5f,  0.5f));
+                p.CyanSolid     = M("Cyan Solid",    new Color(0.0f,  0.72f, 1f,  1f),    0.18f, 0.88f, false, new Color(0f,    0.62f, 1.2f));
+                p.BlueSolid     = M("Blue Solid",    new Color(0.0f,  0.55f, 1f,  1f),    0.18f, 0.88f, false, new Color(0f,    0.35f, 1.0f));
+                p.LimeSolid     = M("Lime Solid",    new Color(0.32f, 0.95f, 0.36f,1f),   0.06f, 0.78f, false, new Color(0.08f, 0.68f, 0.12f));
+                p.GlobeBlue     = M("Globe Blue",    new Color(0.10f, 0.48f, 1f,  0.88f), 0.06f, 0.94f, true,  new Color(0f,    0.28f, 0.80f));
+                p.Bubble        = M("Bubble",        new Color(0.88f, 1f,   1f,  0.22f),  0.04f, 1f,    true,  new Color(0f,    0.14f, 0.22f));
+                p.SignBack      = M("Sign Back",     new Color(0.95f, 1f,   1f,  0.82f),  0.04f, 0.96f, true,  new Color(0.08f, 0.32f, 0.45f));
+                p.AeroBuilding  = M("Bldg Body",     new Color(0.97f, 0.99f, 1f,  1f),    0.08f, 0.96f, false, new Color(0.06f, 0.20f, 0.42f));
+                p.AeroBuildingWindow = M("Bldg Win", new Color(0.16f, 0.68f, 1f,  0.76f), 0.06f, 1.00f, true,  new Color(0.05f, 0.62f, 1.30f));
+                p.Chrome        = M("Chrome",        new Color(0.80f, 0.84f, 0.90f,1f),   1f,    1f,    false, Color.black);
+                p.EmissiveCyan  = M("Emissive Cyan", new Color(0f,    1f,   1f,  1f),     0f,    0.92f, false, new Color(0f,    3.2f,  3.5f));
+                p.EmissiveLime  = M("Emissive Lime", new Color(0.72f, 1f,   0.72f,1f),    0f,    0.92f, false, new Color(0.65f, 2.5f,  0.65f));
                 return p;
             }
 

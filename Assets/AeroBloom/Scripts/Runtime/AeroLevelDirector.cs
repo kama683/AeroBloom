@@ -209,6 +209,14 @@ namespace AeroBloom
             finishTime = Time.time - startTime;
             ShowMessage("AeroBloom restored in " + FormatTime(finishTime) + ".", 8f);
             PlayUiTone(1318f, 0.25f, 0.24f);
+            StartCoroutine(VictoryCameraDelay());
+        }
+
+        private IEnumerator VictoryCameraDelay()
+        {
+            yield return new WaitForSeconds(1.0f);
+            if (player != null)
+                player.BeginVictory();
         }
 
         public void RespawnPlayer(string reason)

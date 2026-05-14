@@ -57,6 +57,8 @@ namespace AeroBloom
         private float verticalVelocity;
         private float cameraPitch;
         private float tpYaw;
+        private bool victoryMode;
+        private float victoryYawTarget;
         private float coyoteTimer;
         private int airJumpsRemaining;
         private bool isSliding;
@@ -92,9 +94,27 @@ namespace AeroBloom
             tpYaw = transform.eulerAngles.y;
         }
 
+        public void BeginVictory()
+        {
+            victoryMode      = true;
+            victoryYawTarget = tpYaw + 180f;
+            planarVelocity   = Vector3.zero;
+            verticalVelocity = 0f;
+        }
+
         private void Update()
         {
             float dt = Time.deltaTime;
+
+            if (victoryMode)
+            {
+                // Slowly pan camera 180° to show the path the player traveled
+                tpYaw        = Mathf.LerpAngle(tpYaw, victoryYawTarget, dt * 0.65f);
+                cameraPitch  = Mathf.Lerp(cameraPitch, -10f, dt * 0.45f);
+                UpdateCamera(dt);
+                UpdateAnimator();
+                return;
+            }
 
             if (AeroInput.CancelPressed())
                 ToggleCursor();

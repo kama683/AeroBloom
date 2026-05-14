@@ -16,6 +16,7 @@ namespace AeroBloom
 
         // ── Finish screen ─────────────────────────────────────────
         private Image finishPanel;
+        private Image finishGlow;
         private Text  finishTitle;
         private Text  finishGrade;
         private Text  finishDetails;
@@ -119,12 +120,20 @@ namespace AeroBloom
         private void TickFinishAnim()
         {
             if (!finishShown || finishPanel == null) return;
-            finishAnimT = Mathf.Min(finishAnimT + Time.deltaTime, 0.52f);
-            float t = Mathf.SmoothStep(0f, 1f, finishAnimT / 0.48f);
+            finishAnimT = Mathf.Min(finishAnimT + Time.deltaTime, 0.60f);
+            float t = Mathf.SmoothStep(0f, 1f, finishAnimT / 0.52f);
             finishPanel.rectTransform.localScale = Vector3.Lerp(Vector3.one * 0.80f, Vector3.one, t);
+            // Animate main card to 84% opacity — keeps city visible through panel
             var c = finishPanel.color;
-            c.a = Mathf.Lerp(0f, 0.95f, t);
+            c.a = Mathf.Lerp(0f, 0.84f, t);
             finishPanel.color = c;
+            // Animate outer glow halo
+            if (finishGlow != null)
+            {
+                var gc = finishGlow.color;
+                gc.a = Mathf.Lerp(0f, 0.20f, t);
+                finishGlow.color = gc;
+            }
         }
 
         // ─────────────────────────────────────────────────────────
@@ -133,8 +142,9 @@ namespace AeroBloom
         {
             finishShown = true;
             finishAnimT = 0f;
-            finishPanel.color = new Color(0.88f, 0.99f, 0.97f, 0f);
+            finishPanel.color = new Color(0.04f, 0.11f, 0.34f, 0f);
             finishPanel.gameObject.SetActive(true);
+            if (finishGlow != null) finishGlow.gameObject.SetActive(true);
 
             float elapsed = AeroLevelDirector.Instance != null
                 ? AeroLevelDirector.Instance.ElapsedTime : 0f;
@@ -148,9 +158,9 @@ namespace AeroBloom
             finishGrade.text  = grade;
             finishGrade.color = GradeColor(grade);
             finishDetails.text =
-                "TIME    " + time
-                + "\n\nSEEDS   " + seeds + " / " + seedTotal
-                + "    RELAY   " + cps + " / " + cpTotal;
+                "TIME     " + time
+                + "\nSEEDS   " + seeds + " / " + seedTotal
+                + "      RELAY   " + cps + " / " + cpTotal;
 
             Cursor.lockState = CursorLockMode.None;
             Cursor.visible   = true;
@@ -192,6 +202,18 @@ namespace AeroBloom
         // ─────────────────────────────────────────────────────────
         private void Build(Transform root, AeroLevelDirector director)
         {
+            // EventSystem is required for button clicks in the gameplay scene
+            if (Object.FindFirstObjectByType<UnityEngine.EventSystems.EventSystem>() == null)
+            {
+                var esGO = new GameObject("EventSystem");
+                esGO.AddComponent<UnityEngine.EventSystems.EventSystem>();
+#if ENABLE_INPUT_SYSTEM
+                esGO.AddComponent<UnityEngine.InputSystem.UI.InputSystemUIInputModule>();
+#else
+                esGO.AddComponent<UnityEngine.EventSystems.StandaloneInputModule>();
+#endif
+            }
+
             Font font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             if (font == null) font = Resources.GetBuiltinResource<Font>("Arial.ttf");
             if (font == null) font = Font.CreateDynamicFontFromOSFont("Arial", 16);
@@ -267,42 +289,70 @@ namespace AeroBloom
             // ── Crosshair ─────────────────────────────────────────
             TxtCentre(root, "Cross", font, 18, "+", new Color(1f, 1f, 1f, 0.55f));
 
-            // ── Finish panel — centre (starts inactive) ───────────
+            // ── Finish panel — Frutiger Aero frosted glass card ────
+            // Outer glow halo (slightly larger, animates in alongside panel)
+            finishGlow = Pnl(root, "FinishGlow",
+                new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(580f, 490f),
+                new Color(0f, 0.68f, 1f, 0f));
+            finishGlow.gameObject.SetActive(false);
+
+            // Main card — deep blue glass
             finishPanel = Pnl(root, "FinishPanel",
-                new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(640f, 420f),
-                new Color(0.88f, 0.99f, 0.97f, 0f));
+                new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(540f, 454f),
+                new Color(0.04f, 0.11f, 0.34f, 0f));
             finishPanel.rectTransform.localScale = Vector3.one * 0.80f;
             finishPanel.gameObject.SetActive(false);
 
-            // Gold top band
-            Bar(finishPanel.transform, new Vector2(0f, 1f), new Vector2(1f, 1f),
-                Vector2.zero, Vector2.zero, new Color(1f, 0.84f, 0.14f, 1f));
-            // — override height of that bar
+            Transform fp = finishPanel.transform;
+
+            // Top glass sheen — simulate frosted glass highlight
             {
-                var bars = finishPanel.transform.Find("Bar");
-                if (bars != null) bars.GetComponent<RectTransform>().sizeDelta = new Vector2(0f, 6f);
+                var sh = new GameObject("TopSheen"); sh.transform.SetParent(fp, false);
+                var si = sh.AddComponent<Image>();
+                si.color = new Color(0.60f, 0.96f, 1f, 0.07f);
+                si.raycastTarget = false;
+                var sr = si.rectTransform;
+                sr.anchorMin = new Vector2(0f, 0.54f); sr.anchorMax = Vector2.one;
+                sr.offsetMin = sr.offsetMax = Vector2.zero;
             }
 
-            // Cyan separator line at 1/3 from bottom
-            Bar(finishPanel.transform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
-                new Vector2(560f, 2f), new Vector2(0f, -32f), new Color(0f, 0.80f, 1f, 0.45f));
+            // Gold top strip
+            Bar(fp, new Vector2(0f, 1f), new Vector2(1f, 1f),
+                new Vector2(0f, 6f), Vector2.zero, new Color(1f, 0.84f, 0.14f, 1f));
 
-            finishTitle = TxtCentre2(finishPanel.transform, "Title", font, 44, FontStyle.Bold,
-                "RUN COMPLETE", new Color(0.06f, 0.28f, 0.54f, 1f),
-                new Vector2(0f, 112f), new Vector2(600f, 60f));
+            // Cyan bottom strip
+            Bar(fp, new Vector2(0f, 0f), new Vector2(1f, 0f),
+                new Vector2(0f, 4f), Vector2.zero, new Color(0f, 0.90f, 1f, 0.88f));
 
-            finishGrade = TxtCentre2(finishPanel.transform, "Grade", font, 88, FontStyle.Bold,
+            // "A E R O B L O O M" brand caption
+            TxtCentre2(fp, "Brand", font, 17, FontStyle.Bold,
+                "A E R O B L O O M", new Color(0.46f, 0.95f, 1f, 0.60f),
+                new Vector2(0f, 181f), new Vector2(500f, 26f));
+
+            // Thin divider below brand
+            Bar(fp, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
+                new Vector2(460f, 1f), new Vector2(0f, 154f), new Color(0f, 0.82f, 1f, 0.30f));
+
+            finishTitle = TxtCentre2(fp, "Title", font, 40, FontStyle.Bold,
+                "RUN COMPLETE", new Color(0.88f, 1f, 1f, 1f),
+                new Vector2(0f, 110f), new Vector2(500f, 56f));
+
+            finishGrade = TxtCentre2(fp, "Grade", font, 96, FontStyle.Bold,
                 "A", new Color(0.28f, 1f, 0.52f, 1f),
-                new Vector2(0f, 20f), new Vector2(150f, 108f));
+                new Vector2(0f, 20f), new Vector2(160f, 118f));
 
-            finishDetails = TxtCentre2(finishPanel.transform, "Details", font, 22, FontStyle.Normal,
-                "", new Color(0.06f, 0.22f, 0.42f, 0.90f),
-                new Vector2(0f, -82f), new Vector2(560f, 90f));
-            finishDetails.lineSpacing = 1.4f;
+            // Cyan separator above details
+            Bar(fp, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
+                new Vector2(480f, 1f), new Vector2(0f, -50f), new Color(0f, 0.82f, 1f, 0.38f));
+
+            finishDetails = TxtCentre2(fp, "Details", font, 19, FontStyle.Normal,
+                "", new Color(0.76f, 0.96f, 1f, 0.88f),
+                new Vector2(0f, -100f), new Vector2(500f, 88f));
+            finishDetails.lineSpacing = 1.55f;
 
             // Buttons
-            var restart = Btn(finishPanel.transform, "RESTART",
-                font, new Vector2(-114f, -176f), new Color(0.14f, 0.72f, 1f, 0.92f));
+            var restart = Btn(fp, "PLAY AGAIN",
+                font, new Vector2(-106f, -188f), new Color(0.08f, 0.50f, 1f, 0.92f));
             restart.onClick.AddListener(() =>
             {
                 Cursor.lockState = CursorLockMode.Locked;
@@ -310,8 +360,8 @@ namespace AeroBloom
                 SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
             });
 
-            var menu = Btn(finishPanel.transform, "MAIN MENU",
-                font, new Vector2(114f, -176f), new Color(0.54f, 0.86f, 1f, 0.72f));
+            var menu = Btn(fp, "MAIN MENU",
+                font, new Vector2(106f, -188f), new Color(0.26f, 0.72f, 1f, 0.55f));
             menu.onClick.AddListener(() =>
             {
                 Cursor.lockState = CursorLockMode.None;
