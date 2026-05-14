@@ -191,7 +191,7 @@ namespace AeroBloom
             grass.name = "GrassPlane";
             grass.transform.SetParent(root, false);
             grass.transform.position   = new Vector3(0f, -3.5f, 380f);
-            grass.transform.localScale = new Vector3(50f, 1f, 100f);
+            grass.transform.localScale = new Vector3(82f, 1f, 92f);
             AssignMat(grass, grassMat);
             DestroyCollider(grass);
 
@@ -201,7 +201,7 @@ namespace AeroBloom
             water.name = "WaterPlane";
             water.transform.SetParent(root, false);
             water.transform.position   = new Vector3(0f, -4f, 380f);
-            water.transform.localScale = new Vector3(55f, 1f, 105f);
+            water.transform.localScale = new Vector3(85f, 1f, 95f);
             AssignMat(water, waterMat);
             DestroyCollider(water);
         }
@@ -316,15 +316,123 @@ namespace AeroBloom
                 float sc = 1.5f + RF(r, 4.5f);
                 MakeSphere(root, "DecoSphere" + i, new Vector3(sx, sy, sz), sc, chromeMat, false);
             }
+
+            // ── INNER CLOSE RING (x = ±47-65) — flanking the corridor ─────────────
+            for (int i = 0; i < 12; i++)
+            {
+                float bx = -(47f + RF(r, 18f));
+                float bz = 20f + RF(r, 760f);
+                float h  = 22f + RF(r, 70f);
+                float w  = 5f  + RF(r, 10f);
+                ProceduralBuilding(root, "IL" + i, new Vector3(bx, h * 0.5f - 5f, bz),
+                    new Vector3(w, h, w), Quaternion.Euler(0, RF(r, 360f), 0), i % 5, wallMat, glassMat, p);
+            }
+            for (int i = 0; i < 12; i++)
+            {
+                float bx = 47f + RF(r, 18f);
+                float bz = 20f + RF(r, 760f);
+                float h  = 22f + RF(r, 70f);
+                float w  = 5f  + RF(r, 10f);
+                ProceduralBuilding(root, "IR" + i, new Vector3(bx, h * 0.5f - 5f, bz),
+                    new Vector3(w, h, w), Quaternion.Euler(0, RF(r, 360f), 0), (i + 3) % 5, wallMat, glassMat, p);
+            }
+
+            // ── FAR OUTER RING (x = ±200-380) — tall background skyline ──────────
+            for (int i = 0; i < 16; i++)
+            {
+                float bx = -(200f + RF(r, 180f));
+                float bz = RF(r, 800f);
+                float h  = 100f + RF(r, 260f);
+                float w  = 16f  + RF(r, 28f);
+                ProceduralBuilding(root, "OL" + i, new Vector3(bx, h * 0.5f - 5f, bz),
+                    new Vector3(w, h, w), Quaternion.Euler(0, RF(r, 360f), 0), i % 5, wallMat, glassMat, p);
+            }
+            for (int i = 0; i < 16; i++)
+            {
+                float bx = 200f + RF(r, 180f);
+                float bz = RF(r, 800f);
+                float h  = 100f + RF(r, 260f);
+                float w  = 16f  + RF(r, 28f);
+                ProceduralBuilding(root, "OR" + i, new Vector3(bx, h * 0.5f - 5f, bz),
+                    new Vector3(w, h, w), Quaternion.Euler(0, RF(r, 360f), 0), (i + 1) % 5, wallMat, glassMat, p);
+            }
+
+            // ── MEGA LANDMARK TOWERS — dominate the far horizon ───────────────────
+            (Vector3 mp, Vector3 ms, int mt)[] megas = {
+                (new Vector3(-280f, 195f,  180f), new Vector3(32f, 390f, 32f), 4),
+                (new Vector3( 265f, 180f,  590f), new Vector3(28f, 360f, 28f), 2),
+                (new Vector3(-315f, 165f,  560f), new Vector3(26f, 330f, 26f), 0),
+                (new Vector3( 295f, 155f,  130f), new Vector3(27f, 310f, 27f), 3),
+                (new Vector3(-225f, 220f,  760f), new Vector3(38f, 440f, 38f), 4),
+                (new Vector3( 235f, 210f,   28f), new Vector3(36f, 420f, 36f), 1),
+            };
+            foreach (var m in megas)
+                ProceduralBuilding(root, "Mega" + m.mp.x, m.mp, m.ms, Quaternion.identity, m.mt, wallMat, glassMat, p);
+
+            // ── FLOATING AERO HALOS — glowing horizontal rings in the sky ─────────
+            Material haloMat = LoadFA("FA_EmissiveCyan"); if (haloMat == null) haloMat = p.EmissiveCyan;
+            (float hx, float hy, float hz, float hr)[] halos = {
+                (-115f,  88f, 220f, 28f),
+                ( 125f,  98f, 430f, 22f),
+                ( -95f, 118f, 565f, 32f),
+                (  95f,  78f, 140f, 20f),
+                (-135f, 108f, 690f, 26f),
+            };
+            foreach (var halo in halos)
+            {
+                var hgo = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+                hgo.name = "AeroHalo";
+                hgo.transform.SetParent(root, false);
+                hgo.transform.position   = new Vector3(halo.hx, halo.hy, halo.hz);
+                hgo.transform.localScale = new Vector3(halo.hr * 2f, 0.38f, halo.hr * 2f);
+                AssignMat(hgo, haloMat);
+                DestroyCollider(hgo);
+                SpawnPointLight(hgo.transform, "HaloGlow", Vector3.zero,
+                    new Color(0f, 0.88f, 1f), 1.3f, halo.hr * 1.6f);
+            }
+
+            // ── GROUND-LEVEL LAMP POSTS (section 1, z=0-75) ───────────────────────
+            Material lampHead = LoadFA("FA_EmissiveCyan"); if (lampHead == null) lampHead = p.EmissiveCyan;
+            for (int i = 0; i < 10; i++)
+            {
+                float lz = 4f + i * 7.5f;
+                BoxNoColl(root, "LShaftL" + i, new Vector3(-25f,  7.0f, lz), new Vector3(0.4f, 14.0f, 0.4f), chromeMat);
+                BoxNoColl(root, "LHeadL"  + i, new Vector3(-25f, 14.3f, lz), new Vector3(1.4f,  0.4f, 1.4f), lampHead);
+                SpawnPointLight(root, "LLitL" + i, new Vector3(-25f, 14.7f, lz), new Color(0.45f, 1f, 1f), 1.1f, 20f);
+                BoxNoColl(root, "LShaftR" + i, new Vector3( 25f,  7.0f, lz), new Vector3(0.4f, 14.0f, 0.4f), chromeMat);
+                BoxNoColl(root, "LHeadR"  + i, new Vector3( 25f, 14.3f, lz), new Vector3(1.4f,  0.4f, 1.4f), lampHead);
+                SpawnPointLight(root, "LLitR" + i, new Vector3( 25f, 14.7f, lz), new Color(0.45f, 1f, 1f), 1.1f, 20f);
+            }
+
+
+            // ── HIGH-ALTITUDE DECO SPHERES — fill the upper sky ──────────────────
+            for (int i = 18; i < 36; i++)
+            {
+                float sx = (float)(r.NextDouble() - 0.5) * 500f;
+                float sz = (float)r.NextDouble() * 800f;
+                float sy = 70f + RF(r, 130f);
+                float sc = 3f  + RF(r, 9f);
+                MakeSphere(root, "HiSphere" + i, new Vector3(sx, sy, sz), sc, chromeMat, false);
+            }
         }
 
         private static void ProceduralBuilding(Transform parent, string name,
             Vector3 pos, Vector3 size, Quaternion rot, int type, Material wall, Material glass, Palette p)
         {
-            Material bodyMat  = p.AeroBuilding;       // blue neon body — skip FA_GlossyWhite
             Material glassMat = LoadFA("FA_BuildingGlass"); if (glassMat == null) glassMat = p.AeroBuildingWindow;
             Material eMat     = LoadFA("FA_EmissiveCyan");  if (eMat     == null) eMat     = p.EmissiveCyan;
             Material chromMat = LoadFA("FA_Chrome");        if (chromMat == null) chromMat = p.Chrome;
+
+            Material bodyMat;
+            switch (type % 5)
+            {
+                case 1:  bodyMat = p.Chrome;       break; // silver-white
+                case 2:  bodyMat = p.BlueSolid;    break; // deep navy
+                case 3:  bodyMat = p.CyanSolid;    break; // teal
+                case 4:  bodyMat = p.GlobeBlue;    break; // translucent dark blue
+                default: bodyMat = p.AeroBuilding; break; // medium blue
+            }
+            Material trimMat = (type % 2 == 0) ? eMat : p.EmissiveLime;
 
             float hh = size.y * 0.5f;
 
@@ -366,7 +474,7 @@ namespace AeroBloom
                 et.transform.SetParent(body.transform, false);
                 et.transform.localPosition = new Vector3(0f, ly / size.y, 0f);
                 et.transform.localScale    = new Vector3(1.012f, 0.38f / size.y, 1.012f);
-                AssignMat(et, eMat);
+                AssignMat(et, trimMat);
                 DestroyCollider(et);
             }
 
@@ -376,7 +484,7 @@ namespace AeroBloom
             topEdge.transform.SetParent(body.transform, false);
             topEdge.transform.localPosition = new Vector3(0f, 0.502f, 0f);
             topEdge.transform.localScale    = new Vector3(1.016f, 0.42f / size.y, 1.016f);
-            AssignMat(topEdge, eMat);
+            AssignMat(topEdge, trimMat);
             DestroyCollider(topEdge);
 
             // Base ground glow
@@ -385,7 +493,7 @@ namespace AeroBloom
             baseEdge.transform.SetParent(body.transform, false);
             baseEdge.transform.localPosition = new Vector3(0f, -0.502f, 0f);
             baseEdge.transform.localScale    = new Vector3(1.016f, 0.42f / size.y, 1.016f);
-            AssignMat(baseEdge, eMat);
+            AssignMat(baseEdge, trimMat);
             DestroyCollider(baseEdge);
 
             // Cyan point light at building top for ambient glow
@@ -1415,7 +1523,7 @@ namespace AeroBloom
                 p.LimeGlass     = M("Lime Glass",    new Color(0.48f, 1f,   0.52f,0.92f), 0.02f, 0.95f, true,  new Color(0.14f, 0.75f, 0.24f));
                 p.WallGlass     = M("Wall Glass",    new Color(0.35f, 0.90f, 1f,  0.78f), 0.02f, 0.99f, true,  new Color(0f,    0.38f, 0.68f));
                 p.Water         = M("Water",         new Color(0.18f, 0.62f, 0.88f,0.30f),0.02f, 1f,   true,  new Color(0f,    0.12f, 0.24f));
-                p.Grass         = M("Aero Grass",    new Color(0.38f, 0.78f, 0.52f,0.55f),0.02f, 0.72f, true,  new Color(0.01f, 0.12f, 0.08f));
+                p.Grass         = M("City Floor",     new Color(0.06f, 0.11f, 0.22f, 1f),  0.22f, 0.84f, false, new Color(0f,    0.02f, 0.08f));
                 p.Ground        = M("Ground",        new Color(0.78f, 0.96f, 1f,  1f),    0.1f,  0.7f,  false, Color.black);
                 p.Seed          = M("Aero Seed",     new Color(0.84f, 1f,   0.92f,0.96f), 0f,    0.98f, true,  new Color(0.55f, 3.5f,  2.0f));
                 p.Pad           = M("Bounce Pad",    new Color(0.82f, 1f,   1f,  0.92f),  0.02f, 0.98f, true,  new Color(0.20f, 1.4f,  1.8f));
