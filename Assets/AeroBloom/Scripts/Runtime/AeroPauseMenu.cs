@@ -47,16 +47,42 @@ namespace AeroBloom
         {
             if (!visible) return;
 
-            bool tab = false, esc = false;
+            bool tab = false, esc = false, confirm = false;
+            bool clicked = false;
+            Vector2 mp = Vector2.zero;
+
 #if ENABLE_INPUT_SYSTEM
-            var kb = UnityEngine.InputSystem.Keyboard.current;
-            if (kb != null) { tab = kb.tabKey.wasPressedThisFrame; esc = kb.escapeKey.wasPressedThisFrame; }
+            var kb    = UnityEngine.InputSystem.Keyboard.current;
+            var mouse = UnityEngine.InputSystem.Mouse.current;
+            if (kb != null)
+            {
+                tab     = kb.tabKey.wasPressedThisFrame;
+                esc     = kb.escapeKey.wasPressedThisFrame;
+                confirm = kb.enterKey.wasPressedThisFrame || kb.spaceKey.wasPressedThisFrame;
+            }
+            if (mouse != null && mouse.leftButton.wasPressedThisFrame)
+            {
+                clicked = true;
+                mp = mouse.position.ReadValue();
+            }
 #else
-            tab = Input.GetKeyDown(KeyCode.Tab);
-            esc = Input.GetKeyDown(KeyCode.Escape);
+            tab     = Input.GetKeyDown(KeyCode.Tab);
+            esc     = Input.GetKeyDown(KeyCode.Escape);
+            confirm = Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.Space);
+            if (Input.GetMouseButtonDown(0)) { clicked = true; mp = Input.mousePosition; }
 #endif
-            if (tab)  { selectedIdx = 1 - selectedIdx; SelectBtn(selectedIdx); }
-            if (esc)  DoHide();
+            if (tab)     { selectedIdx = 1 - selectedIdx; SelectBtn(selectedIdx); }
+            if (esc)     DoHide();
+            if (confirm) { if (selectedIdx == 0) OnResume(); else OnQuit(); }
+            if (clicked)
+            {
+                if (resumeBtn != null && RectTransformUtility.RectangleContainsScreenPoint(
+                        resumeBtn.GetComponent<RectTransform>(), mp, null))
+                    OnResume();
+                else if (quitBtn != null && RectTransformUtility.RectangleContainsScreenPoint(
+                        quitBtn.GetComponent<RectTransform>(), mp, null))
+                    OnQuit();
+            }
         }
 
         private void SelectBtn(int idx)
