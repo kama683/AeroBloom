@@ -26,6 +26,7 @@ namespace AeroBloom
         private float playerSpeed;
         private bool finished;
         private bool isRespawning;
+        private bool gameplayActive;
         private string message = "";
         private float messageUntil;
 
@@ -106,6 +107,9 @@ namespace AeroBloom
             ambient.spatialBlend = 0f;
             ambient.Play();
 
+            EnsureEventSystem();
+            AeroPauseMenu.EnsureExists();
+
             if (player != null)
             {
                 player.enabled = false;
@@ -115,6 +119,14 @@ namespace AeroBloom
 
         private void Update()
         {
+#if ENABLE_INPUT_SYSTEM
+            if (gameplayActive && !finished && UnityEngine.InputSystem.Keyboard.current != null &&
+                UnityEngine.InputSystem.Keyboard.current.escapeKey.wasPressedThisFrame)
+                AeroPauseMenu.Toggle();
+#else
+            if (gameplayActive && !finished && Input.GetKeyDown(KeyCode.Escape))
+                AeroPauseMenu.Toggle();
+#endif
             if (hud != null)
             {
                 string activeMessage = Time.time < messageUntil ? message : "";
@@ -230,7 +242,8 @@ namespace AeroBloom
             yield return null; // let first frame render before intro appears
             AeroStoryIntro.Play(() =>
             {
-                startTime = Time.time; // timer begins the moment intro closes
+                startTime = Time.time;
+                gameplayActive = true;
                 if (pc != null) pc.enabled = true;
                 Cursor.lockState = CursorLockMode.Locked;
                 Cursor.visible   = false;
@@ -295,6 +308,19 @@ namespace AeroBloom
             int minutes = Mathf.FloorToInt(seconds / 60f);
             float remainder = seconds - minutes * 60f;
             return minutes.ToString("00") + ":" + remainder.ToString("00.00");
+        }
+
+        private static void EnsureEventSystem()
+        {
+            if (Object.FindFirstObjectByType<UnityEngine.EventSystems.EventSystem>() != null) return;
+            var esGo = new GameObject("EventSystem");
+            DontDestroyOnLoad(esGo);
+            esGo.AddComponent<UnityEngine.EventSystems.EventSystem>();
+#if ENABLE_INPUT_SYSTEM
+            esGo.AddComponent<UnityEngine.InputSystem.UI.InputSystemUIInputModule>();
+#else
+            esGo.AddComponent<UnityEngine.EventSystems.StandaloneInputModule>();
+#endif
         }
     }
 }

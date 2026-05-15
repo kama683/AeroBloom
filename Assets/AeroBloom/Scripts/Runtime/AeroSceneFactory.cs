@@ -44,7 +44,6 @@ namespace AeroBloom
             SetupEnvironment(envRoot);
             CreateGroundPlane(envRoot, p, pack);
             CreateAmbientParticles(vfxRoot);
-            CreateSoapBubbles(vfxRoot, p);
             CreateCity(cityRoot, p);
 
             Vector3 startPos = new Vector3(0f, 0.6f, -5f);
@@ -235,33 +234,6 @@ namespace AeroBloom
             var psr = psGO.GetComponent<ParticleSystemRenderer>();
             psr.shadowCastingMode = ShadowCastingMode.Off;
             psr.material = MakeParticleMat(new Color(1f, 1f, 1f, 0.35f));
-        }
-
-        private static void CreateSoapBubbles(Transform root, Palette p)
-        {
-            System.Random r = new System.Random(99);
-            for (int i = 0; i < 60; i++)
-            {
-                float bx = (float)(r.NextDouble() - 0.5) * 200f;
-                float bz = (float)r.NextDouble() * 750f;
-                float by = (float)r.NextDouble() * 25f + 2f;
-                float sc = (float)r.NextDouble() * 1.2f + 0.4f;
-
-                GameObject bub = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-                bub.name = "SoapBubble " + i;
-                bub.transform.SetParent(root, false);
-                bub.transform.position   = new Vector3(bx, by, bz);
-                bub.transform.localScale = Vector3.one * sc;
-                AssignMat(bub, p.Bubble);
-                DestroyCollider(bub);
-
-                SoapBubbleFloat sbf = bub.AddComponent<SoapBubbleFloat>();
-                sbf.riseSpeed     = 0.3f + (float)r.NextDouble() * 0.4f;
-                sbf.swayAmplitude = 0.4f + (float)r.NextDouble() * 0.6f;
-                sbf.swayFreqX     = 0.5f + (float)r.NextDouble() * 0.5f;
-                sbf.swayFreqZ     = 0.6f + (float)r.NextDouble() * 0.6f;
-                sbf.maxHeight     = 50f  + (float)r.NextDouble() * 40f;
-            }
         }
 
         // ─────────────────────────────────────────────

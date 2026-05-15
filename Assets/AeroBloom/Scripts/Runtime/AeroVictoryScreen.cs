@@ -208,8 +208,7 @@ namespace AeroBloom
                   "The AeroBloom blooms once more — and with it, the digital world\n" +
                   "awakens in radiant, glowing harmony."
                 : "You reached the summit, but some seeds remain scattered.\n" +
-                  "The AeroBloom stirs — its light incomplete.\n" +
-                  "Return and gather what was left behind.";
+                  "The AeroBloom stirs — its light incomplete.";
 
             var bodyTxt = Txt(cp, "Body", font, 17, FontStyle.Normal,
                 body, new Color(0.06f,0.18f,0.44f,0.92f), TextAnchor.UpperLeft,
