@@ -1,0 +1,35 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a7c4e1f92b8d4e649f0a1b2c3d4e5f60, type: 3}
+  m_Name: AeroCutsceneConfig
+  m_EditorClassIdentifier: Assembly-CSharp::AeroBloom.AeroCutsceneConfig
+  slides:
+  - {fileID: 2800000, guid: 1fe2d21d4b00f4a448baac7b7e0ca9f0, type: 3}
+  - {fileID: 2800000, guid: e14ae23fdb6cba644ada447ff01388be, type: 3}
+  - {fileID: 2800000, guid: c2f07d1a164f9f04e98955b054ddcefb, type: 3}
+  - {fileID: 2800000, guid: acd537e53a64c394c8c6e0e51049a960, type: 3}
+  - {fileID: 2800000, guid: 974114fee9be6ee4784530649474a5c6, type: 3}
+  - {fileID: 2800000, guid: 34893dae36fd1c741a7f619b67d3f6b6, type: 3}
+  - {fileID: 2800000, guid: ce147cc408016df40b762666856c4a7a, type: 3}
+  subtitles:
+  - A computer is a window into another world — games, messages, and dreams all live behind the screen.
+  - Every tap feels instant… but behind it, millions of data packets race through hidden pathways.
+  - Deep inside the machine lies a luminous realm — the world of AeroBloom.
+  - Tiny AeroBloom workers carry traffic: your chats, your videos, the sites you love. They never rest.
+  - While the routes stay clear, the digital sky glows in perfect harmony.
+  - Sometimes a dangerous file slips in — a virus that scatters traffic and breaks every road.
+  - You are an AeroBloom courier. Gather the lost packets, reach the core, and awaken the antivirus.
+  fadeFromBlack: 1.35
+  slideHold: 5.5
+  crossfade: 1.15
+  fadeToGame: 0.85
+  kenBurnsScale: 1.06

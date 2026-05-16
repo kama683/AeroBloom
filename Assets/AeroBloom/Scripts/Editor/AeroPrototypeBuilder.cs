@@ -12,6 +12,7 @@ namespace AeroBloom.EditorTools
         private const string MainMenuScenePath = "Assets/Scenes/MainMenu.unity";
         private const string PrototypeScenePath = "Assets/Scenes/AeroBloomPrototype.unity";
         private const string FieldScenePath = "Assets/Scenes/Field.unity";
+        private const string TestSandboxScenePath = "Assets/Scenes/TestSandbox.unity";
 
         [MenuItem("AeroBloom/1. Setup Pack Assets", priority = 1)]
         public static void SetupPack() => AeroPackSetup.SetupPackAssets();
@@ -49,7 +50,34 @@ namespace AeroBloom.EditorTools
                 "OK");
         }
 
-        [MenuItem("AeroBloom/4. Build Windows Build", priority = 4)]
+        [MenuItem("AeroBloom/4. Create Test Sandbox Scene", priority = 4)]
+        public static void CreateTestSandboxScene()
+        {
+            var scene = File.Exists(FieldScenePath)
+                ? EditorSceneManager.OpenScene(FieldScenePath, OpenSceneMode.Single)
+                : EditorSceneManager.NewScene(NewSceneSetup.DefaultGameObjects, NewSceneMode.Single);
+
+            GameObject runtime = GameObject.Find(AeroSceneFactory.RootName);
+            if (runtime != null)
+                Object.DestroyImmediate(runtime);
+
+            AeroStandaloneScene marker = Object.FindFirstObjectByType<AeroStandaloneScene>();
+            if (marker == null)
+            {
+                GameObject root = new GameObject("TestSceneRoot");
+                root.AddComponent<AeroStandaloneScene>();
+            }
+
+            EditorSceneManager.MarkSceneDirty(scene);
+            EditorSceneManager.SaveScene(scene, TestSandboxScenePath);
+            AssetDatabase.SaveAssets();
+            EditorUtility.DisplayDialog("AeroBloom",
+                "Test sandbox saved to " + TestSandboxScenePath +
+                "\n\nOpen it and press Play — only this scene runs (no auto level generation).",
+                "OK");
+        }
+
+        [MenuItem("AeroBloom/5. Build Windows Build", priority = 5)]
         public static void BuildWindowsPrototype()
         {
             if (!File.Exists(MainMenuScenePath))

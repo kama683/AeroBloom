@@ -144,6 +144,14 @@ namespace AeroBloom
                 director.RespawnPlayer("Recovered from the water layer.");
         }
 
+        /// <summary>Creates or re-enables the follow camera (used by TestSandbox open world build).</summary>
+        public void EnsureExploreCamera()
+        {
+            EnsureCamera();
+            if (playerCamera != null)
+                playerCamera.gameObject.SetActive(true);
+        }
+
         private void EnsureCamera()
         {
             if (thirdPersonMode)

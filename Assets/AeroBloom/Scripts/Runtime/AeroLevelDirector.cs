@@ -240,7 +240,7 @@ namespace AeroBloom
         private IEnumerator LaunchIntro(AeroPlayerController pc)
         {
             yield return null; // let first frame render before intro appears
-            AeroStoryIntro.Play(() =>
+            AeroSlideCutscene.Play(() =>
             {
                 startTime = Time.time;
                 gameplayActive = true;

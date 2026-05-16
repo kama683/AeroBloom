@@ -17,6 +17,8 @@ namespace AeroBloom
         {
             var scene = UnityEngine.SceneManagement.SceneManager.GetActiveScene();
             if (scene.name == "MainMenu" || scene.buildIndex == 0) return;
+            if (scene.name == AeroStandaloneScene.DefaultSceneName) return;
+            if (Object.FindFirstObjectByType<AeroStandaloneScene>() != null) return;
             if (Object.FindFirstObjectByType<AeroLevelDirector>() != null) return;
             BuildPrototypeScene(false);
         }
