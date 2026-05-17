@@ -28,6 +28,12 @@ namespace AeroBloom.EditorTools
 
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene, MainMenuScenePath);
+
+            // Populate menu world + UI immediately so layout is ready without extra manual steps.
+            EditorSceneManager.OpenScene(MainMenuScenePath, OpenSceneMode.Single);
+            global::AeroMainMenuHierarchyBuilder.RebuildGeneratedHierarchy();
+            EditorSceneManager.SaveScene(SceneManager.GetActiveScene(), MainMenuScenePath);
+
             AssetDatabase.SaveAssets();
             EditorUtility.DisplayDialog("AeroBloom", "Main Menu scene created at " + MainMenuScenePath, "OK");
         }

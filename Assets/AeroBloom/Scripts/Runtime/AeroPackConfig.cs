@@ -32,5 +32,9 @@ namespace AeroBloom
         [Header("Character")]
         public GameObject msnBuddyPrefab;
         public RuntimeAnimatorController msnBuddyAnimator;
+
+        [Header("Main Menu Textures")]
+        public Texture2D mainMenuBackgroundTexture;
+        public Texture2D mainMenuForegroundTexture;
     }
 }

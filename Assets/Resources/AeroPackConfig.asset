@@ -25,3 +25,5 @@ MonoBehaviour:
   footstepParticlesPrefab: {fileID: 7565357740948326728, guid: 0f81612981d474548839eb7338dc753d, type: 3}
   msnBuddyPrefab: {fileID: 919132149155446097, guid: 3d946444fba3eb74db0a060547d5c491, type: 3}
   msnBuddyAnimator: {fileID: 9100000, guid: bc5e183d48b4b724fac63b38471b6583, type: 2}
+  mainMenuBackgroundTexture: {fileID: 2800000, guid: 41d7a697db2af449382d1a83b71709f5, type: 3}
+  mainMenuForegroundTexture: {fileID: 2800000, guid: 17d0ce23f420c4a69bffce94320b911b, type: 3}
