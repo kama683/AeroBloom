@@ -72,17 +72,20 @@ namespace AeroBloom
         // ─────────────────────────────────────────────
         private static void SetupEnvironment(Transform root)
         {
-            RenderSettings.fog = false;
+            // Dreamy sky haze — distant city dissolves into fog
+            RenderSettings.fog = true;
+            RenderSettings.fogMode = FogMode.ExponentialSquared;
+            RenderSettings.fogColor = new Color(0.72f, 0.88f, 1f);
+            RenderSettings.fogDensity = 0.0018f;
 
-            // Skybox ambient — Unity samples the procedural skybox for ambient automatically
             RenderSettings.ambientMode = AmbientMode.Skybox;
 
             Shader skyShader = Shader.Find("Skybox/Procedural");
             if (skyShader != null)
             {
                 Material sky = new Material(skyShader);
-                sky.SetColor("_SkyTint",     new Color(0.07f, 0.44f, 0.92f));
-                sky.SetColor("_GroundColor", new Color(0.10f, 0.38f, 0.65f));
+                sky.SetColor("_SkyTint",     new Color(0.35f, 0.72f, 1f));
+                sky.SetColor("_GroundColor", new Color(0.55f, 0.88f, 0.98f));
                 sky.SetFloat("_AtmosphereThickness", 0.78f);
                 sky.SetFloat("_Exposure",            1.22f);
                 sky.SetFloat("_SunDisk",             2f);
@@ -171,12 +174,12 @@ namespace AeroBloom
             grain.intensity.Override(0.06f);
             grain.response.Override(0.85f);
 
-            // Depth of field — blurs only distant background (>90 m), foreground sharp
+            // Depth of field — distant towers melt into atmosphere
             var dof = prof.Add<DepthOfField>(true);
             dof.mode.Override(DepthOfFieldMode.Gaussian);
-            dof.gaussianStart.Override(90f);
-            dof.gaussianEnd.Override(220f);
-            dof.gaussianMaxRadius.Override(1.2f);
+            dof.gaussianStart.Override(55f);
+            dof.gaussianEnd.Override(140f);
+            dof.gaussianMaxRadius.Override(1.45f);
             dof.highQualitySampling.Override(true);
         }
 
@@ -794,11 +797,20 @@ namespace AeroBloom
             Palette p, ref int seeds, ref int cps)
         {
             Transform s = Child(root, "Section4_MistCrossing");
-            Material eMat = LoadFA("FA_EmissiveLime"); if (eMat == null) eMat = p.EmissiveLime;
+            GameObject atmos = new GameObject("MistAtmosphere");
+            atmos.transform.SetParent(s, false);
+            atmos.transform.localPosition = new Vector3(0f, 56f, 415f);
+            atmos.AddComponent<AeroMistAtmosphere>();
 
             Sign(s, "MistHint", "Careful...\nThe mist hides the path.", new Vector3(-5f, 47.9f, 368f), Quaternion.Euler(0f, -30f, 0f), p, noPole: true);
 
-            // 12 narrow platforms — start at y≈48 (S3 end), ~1.5m gain each
+            AeroCloudVisuals.SpawnCloudBank(s, new Vector3(-8f, 52f, 382f), 24f, 16f, 10f, 101);
+            AeroCloudVisuals.SpawnCloudBank(s, new Vector3(10f, 55f, 408f), 28f, 18f, 11f, 202);
+            AeroCloudVisuals.SpawnCloudBank(s, new Vector3(-6f, 58f, 434f), 26f, 17f, 10f, 303);
+            AeroCloudVisuals.SpawnCloudBank(s, new Vector3(4f, 61f, 452f), 22f, 14f, 9f, 404);
+            AeroCloudVisuals.SpawnCloudBank(s, new Vector3(0f, 54f, 400f), 38f, 22f, 12f, 505);
+
+            // Cloud platforms: invisible collider + soft white-blue volume (no green glass cubes)
             (Vector3 pos, Vector3 size, bool moves, Vector3 axis, float amp, float spd)[] plats =
             {
                 (new Vector3( 0f, 49f, 366f), new Vector3(5f, 0.5f, 5f),  false, Vector3.zero,    0f, 0f),
@@ -818,42 +830,20 @@ namespace AeroBloom
             for (int i = 0; i < plats.Length; i++)
             {
                 var pl = plats[i];
-                Material mat = (i % 3 == 2) ? p.CyanSolid : p.WhiteGlass;
-                GameObject plt = Plat(s, "MistPlat " + (i + 1), pl.pos, pl.size, mat);
+                Vector3 footprint = new Vector3(pl.size.x, pl.size.y, pl.size.z);
+                GameObject plt = AeroCloudVisuals.CreateDreamyCloudPlatform(
+                    s, "MistPlat " + (i + 1), pl.pos, footprint,
+                    pl.moves, pl.axis, pl.amp, pl.spd, i * 0.7f);
 
-                if (pl.moves)
-                {
-                    PlatformMover mv = plt.AddComponent<PlatformMover>();
-                    mv.moveAxis    = pl.axis;
-                    mv.amplitude   = pl.amp;
-                    mv.speed       = pl.spd;
-                    mv.phaseOffset = i * 0.7f;
-                }
-
-                // Glowing edge so player can see platforms through mist
-                BoxChild(plt.transform, "GlowEdge", new Vector3(0f, 0.25f, 0f),
-                    new Vector3(pl.size.x + 0.25f, 0.1f, pl.size.z + 0.25f), eMat);
+                AeroCloudVisuals.SpawnPathBeacon(plt.transform, footprint);
 
                 if (i == 4 || i == 8)
                     AddSeed(s, pl.pos + new Vector3(0f, 1.5f, 0f), dir, p, ref seeds);
             }
 
-            // Mist particle effect
-            GameObject mistGO = new GameObject("MistParticles");
-            mistGO.transform.SetParent(s, false);
-            mistGO.transform.position = new Vector3(0f, 56f, 415f);
-            ParticleSystem mps = mistGO.AddComponent<ParticleSystem>();
-            var mm = mps.main;
-            mm.startLifetime = 9f; mm.startSpeed = 0.15f;
-            mm.startSize = new ParticleSystem.MinMaxCurve(3f, 7f);
-            mm.startColor = new Color(0.87f, 0.95f, 1f, 0.10f);
-            mm.maxParticles = 100;
-            mm.simulationSpace = ParticleSystemSimulationSpace.World;
-            var me = mps.emission; me.rateOverTime = 12f;
-            var ms = mps.shape; ms.shapeType = ParticleSystemShapeType.Box; ms.scale = new Vector3(40f, 16f, 110f);
-            var msr = mistGO.GetComponent<ParticleSystemRenderer>();
-            msr.shadowCastingMode = ShadowCastingMode.Off;
-            msr.material = MakeParticleMat(new Color(0.87f, 0.95f, 1f, 0.10f));
+            AeroCloudVisuals.BuildMistParticleVolume(s, new Vector3(0f, 56f, 415f), new Vector3(48f, 22f, 112f));
+            AeroCloudVisuals.BuildMistParticleVolume(s, new Vector3(0f, 60f, 395f), new Vector3(40f, 16f, 55f));
+            AeroCloudVisuals.BuildMistParticleVolume(s, new Vector3(0f, 52f, 430f), new Vector3(32f, 12f, 70f));
 
             Sign(s, "Warn04", "TOWER ASCENT BEGINS!\nVertical climb — no falling!\nUse dash and wall-run.", new Vector3(0f, 65.8f, 456f), Quaternion.identity, p, noPole: true);
             Checkpoint(s, "Relay 04 Mist", new Vector3(0f, 64.3f, 466f), Quaternion.identity, p, ref cps);
@@ -1260,6 +1250,18 @@ namespace AeroBloom
             return go;
         }
 
+        private static GameObject MakeSphereLocal(Transform parent, string name, Vector3 localPos, float radius, Material mat)
+        {
+            GameObject go = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            go.name = name;
+            go.transform.SetParent(parent, false);
+            go.transform.localPosition = localPos;
+            go.transform.localScale = Vector3.one * radius;
+            AssignMat(go, mat);
+            DestroyCollider(go);
+            return go;
+        }
+
         private static void BoxChild(Transform parent, string name, Vector3 localPos, Vector3 localScale, Material mat)
         {
             GameObject go = GameObject.CreatePrimitive(PrimitiveType.Cube);
@@ -1488,7 +1490,7 @@ namespace AeroBloom
             public Material Water, Grass, Seed, Pad, RelayInactive, RelayActive, Finish;
             public Material CyanSolid, BlueSolid, LimeSolid, GlobeBlue, Bubble, SignBack;
             public Material AeroBuilding, AeroBuildingWindow;
-            public Material Chrome, EmissiveCyan, EmissiveLime, Ground;
+            public Material Chrome, EmissiveCyan, EmissiveLime, Ground, Cloud;
 
             public static Palette Create()
             {
@@ -1518,6 +1520,7 @@ namespace AeroBloom
                 p.Chrome        = M("Chrome",        new Color(0.80f, 0.84f, 0.90f,1f),   1f,    1f,    false, Color.black);
                 p.EmissiveCyan  = M("Emissive Cyan", new Color(0f,    1f,   1f,  1f),     0f,    0.92f, false, new Color(0f,    3.2f,  3.5f));
                 p.EmissiveLime  = M("Emissive Lime", new Color(0.72f, 1f,   0.72f,1f),    0f,    0.92f, false, new Color(0.65f, 2.5f,  0.65f));
+                p.Cloud         = M("Mist Cloud",    new Color(1f,    1f,   1f,   0.42f), 0f,    0.88f, true,  new Color(0.55f, 0.62f, 0.72f));
                 return p;
             }
 
